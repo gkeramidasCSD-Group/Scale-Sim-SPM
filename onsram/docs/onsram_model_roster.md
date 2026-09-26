@@ -18,15 +18,25 @@ export cache both papers read from, see `spm_common/model_resolver.py`) and `tri
 | **ResNet-50** | ✅ `_exported/_exported_resnet50-tflite-float/model.json` | Ready to run today — same exported artifact COSMA's own roster already uses |
 | **MobileNetV1** | ✅ `_exported/MobileNet/model.json` | Ready to run today — this is `run_onsram.py`'s own default model (`DEFAULT_MODEL = 'MobileNet'`) |
 | **SqueezeNet** | ✅ `_exported/squeezenet/model.json` | Ready to run — but `_exported/squeezenet_small_cifar100_int8_tucker_svd_5/` is a separate, quantized/reduced variant; paper doesn't specify which SqueezeNet |
-| AlexNet | ❌ not sourced | Would need exporting first |
-| GoogLeNet | ❌ not sourced | Would need exporting first |
+| **AlexNet** | ✅ `_exported/AlexNet/model.json` (+ `AlexNet_unfused`) | Built 2026-09-26 by `spm_common/build_paper_models.py` (torchvision architecture, 61.1M params, random weights -- only the architecture matters here) |
+| **GoogLeNet** | ✅ `_exported/GoogLeNet/model.json` (+ `GoogLeNet_unfused`) | Built 2026-09-26 by `spm_common/build_paper_models.py` (Inception v1 with BatchNorm, as TF-slim/torchvision; 6.6M params) |
 | Inception-v4 | ❌ not sourced | Only v3 is currently exported |
 | SSD300 | ❌ not sourced | Detection model — would need exporting first |
-| ResNeXt | ❌ not sourced | Same gap already flagged in COSMA's own roster |
+| **ResNeXt** | ✅ `_exported/ResNeXt50/model.json` (+ `ResNeXt50_unfused`) | Built 2026-09-26 by `spm_common/build_paper_models.py` (ResNeXt-50 32x4d, 25.1M params; 16 grouped convs, `groups: 32`) |
 | **PTB-LSTM** | ⛔ structurally blocked | Recurrent, not conv-like — not just unsourced: even exported, it wouldn't get real simulated cost today (see §3) |
 | **Multi-Head Attention** | ⛔ structurally blocked | Same reason — attention's matmuls *could* be represented via a GEMM-as-1×1-conv extension, but that work doesn't exist yet |
 
 ## 2. Summary
+
+*Update 2026-09-26:* **8 of 12 now runnable** -- AlexNet, GoogLeNet and
+ResNeXt-50 were added with `spm_common/build_paper_models.py` (Keras
+definitions of the standard architectures, converted to TFLite and
+exported with trim's exporter; trim's exporter is patched in-process for
+ResNeXt's grouped convs, trim's files untouched). Every model also has an
+`<name>_unfused` version from `spm_common/unfuse_model.py`. Still missing:
+Inception-v4, SSD300, PTB-LSTM, Multi-Head Attention. The original summary
+below is kept for history.
+
 
 **5 of 12 ready to run right now**: VGG-16, Inception-v3, ResNet-50, MobileNetV1, SqueezeNet —
 directly matching the paper's own models, and a noticeably better hit rate than COSMA's 3/14,

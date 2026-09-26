@@ -291,7 +291,7 @@ bytes, so COSMA and OnSRAM DRAM numbers are no longer in the same units.
 
 ## Results now (OnSRAM, paper config, 2MB)
 
-| Model | Ours | Our ceiling | Paper, fused layers | Paper, unfused (Table 1) |
+| Model | Ours | Our ceiling | Paper's layer-fusion experiment (§7.1.6, range only) | Paper, main results (Table 1) |
 |---|---:|---:|---|---|
 | MobileNetV1 | 1.36× | 1.38× | 1.01–2.17×, avg 1.31× (§7.1.6) | ∞ SPM 5.17× |
 | SqueezeNet1.1 | 1.24× | 1.24× | same range | ∞ SPM 2.84× |
@@ -307,11 +307,13 @@ direction is half-empty, and every fold pays ~77 cycles of fill/drain,
 which dominates late layers with few output pixels (batch 1 makes it
 worse). So compute is ~70–80% of our baseline time, which caps the
 speedup. Even ideal compute would only raise the ceilings to 1.69×
-(SqueezeNet) and 1.91× (MobileNet). The bigger difference is that the
-paper's headline uses **unfused** graphs with separate, very memory-bound
-BatchNorm/ReLU/BiasAdd nodes, while our TFLite models are fused. The
-paper's own fused-layer result (1.01–2.17×, avg 1.31×) is the fair
-comparison, and our numbers sit inside it. Full explanation with numbers:
+(SqueezeNet) and 1.91× (MobileNet). The bigger difference: the paper
+takes TensorFlow graphs and reports ReLU/BatchNorm as their own layer
+types (§4, §7.1.3), so by our reading its main results have those as
+separate, very memory-bound nodes. The paper doesn't use the words
+"fused/unfused"; its only fusion result is one side experiment (§7.1.6:
+1.01–2.17×, avg 1.31×, no per-model numbers). Our TFLite models have
+BatchNorm/ReLU folded into the convs. Full explanation with numbers:
 `onsram/docs/why_our_speedups_are_lower_than_the_paper.md`, section "Why
 compute takes so much of the execution time in our setup".
 
@@ -320,7 +322,145 @@ compute takes so much of the execution time in our setup".
 1. Dense layers aren't simulated (0 cost), nor are ADD/CONCAT/pooling.
    Simulating the small ops as memory-bound nodes would show more of
    OnSRAM's benefit.
-2. Decide which paper numbers to compare against: fused (like-for-like
-   with our TFLite models) or unfused (the headline Table 1).
+2. Decide which paper numbers to compare against: the §7.1.6
+   layer-fusion range (closest to our TFLite models, but no per-model
+   values) or Table 1 using the unfused models from
+   `spm_common/unfuse_model.py`.
 3. VGG16 (memory) and Inception-v3 (placement failure) still don't run.
 4. `plan_for_real_remaining_spm.md` is out of date.
+
+---
+
+# Update — 2026-09-26: non-conv layers costed, unfused models
+
+**8. Non-conv layers now cost time (both COSMA and OnSRAM; COSMA by your
+one-time approval).** DENSE runs through SCALE-Sim as a 1×1 conv on a 1×1
+image (both topology builders; `run_cosma.py` and `run_paper_baselines.py`
+treat DENSE as conv-like). ADD, CONCAT, pooling, PAD, SUB/MUL, REDUCE_MEAN
+and SOFTMAX are costed by `_nonconv_layer_stats()` in each runner as pure
+data movement: each input read once, each output written once, compute
+~0, with each paper's usual on-chip rules. COSMA ResNet-20 @ 200KB/1024KB:
+11.12× → 11.40× (baseline now includes ADD/REDUCE/DENSE traffic), 0
+violations.
+
+**9. Unfused models (`spm_common/unfuse_model.py`).** Ported from
+`/home/george/trim/spm_management/onsram_bw/onsram_unfused.py`, with
+fixes: ReLU only where model.json records a fused activation (also after
+ADD, e.g. ResNet-50), BatchNorm only for networks that had it (BiasAdd for
+SqueezeNet/VGG, dense layers and a BN network's final classifier conv),
+fresh tensor ids, renumbered layers, rebuilt inputs_from/topo_sort.
+Usage: `python3 spm_common/unfuse_model.py MobileNet` →
+`cosma/_exported/MobileNet_unfused/model.json`. Run with
+`python3 onsram/run_onsram.py --model MobileNet_unfused --config configs/scale_onsram.cfg`.
+
+## Results (OnSRAM, paper config, 2MB)
+
+| Model | Fused | Unfused | Paper 1-Step | Paper ∞ SPM |
+|---|---:|---:|---:|---:|
+| ResNet-50 | 1.19× | **1.60×** | 1.33× | 1.75× |
+| SqueezeNet1.1 | 2.01× | **2.87×** | 1.57× | 2.84× |
+| MobileNetV1 | 1.37× | **2.78×** | 2.84× | 5.17× |
+| MobileNetV2 | 1.60× | **2.66×** | — | — |
+
+Unfused ResNet-50 matches the paper closely; SqueezeNet lands ~1% above
+the paper's ∞ SPM bound (likely the extra BiasAdd nodes); MobileNetV1 is
+still limited by SCALE-Sim's compute time (~2× ideal). Note on wording:
+the paper doesn't label results fused/unfused. Its main results use
+TensorFlow graphs with ReLU/BatchNorm as their own layer types (§4,
+§7.1.3), and its only fusion result is one side experiment (§7.1.6).
+
+## Still open
+
+1. MobileNetV1's remaining gap is compute: SCALE-Sim's 39×39 array
+   (half-empty tiles, fill/drain per tile at batch 1).
+2. VGG16 (memory) and Inception-v3 (placement failure) still don't run.
+3. COSMA and OnSRAM DRAM numbers are in different units (SCALE-Sim
+   elements vs FP16 bytes).
+4. `plan_for_real_remaining_spm.md` is out of date.
+
+---
+
+# Update — 2026-09-26 (evening): whole roster vs the paper
+
+**10. Three more paper models.** `spm_common/build_paper_models.py` builds
+AlexNet (torchvision architecture), GoogLeNet (Inception v1 with
+BatchNorm) and ResNeXt-50 32x4d as Keras models with random weights (only
+the architecture matters here), converts to TFLite and exports with trim's
+exporter into `cosma/_exported/`. trim's exporter can't handle grouped
+convs, so the script patches it in-process (trim's files are untouched).
+Both topology builders and OnSRAM's `fom.py` now use `groups` (a no-op for
+all older models). Dense layers are now costed by SCALE-Sim's fold formula
+instead of simulated, because SCALE-Sim ran out of memory on AlexNet's
+9216×4096 dense layer.
+
+Paper config (39×39 array, 32 B/cycle, 2 MB SPM, batch 1, FP16), final
+code state: hand-off reads from SPM, channels-across-columns depthwise,
+grouped convs, ideal tiling, pinned-only free outputs, fetch-once traffic,
+stall-free compute, non-conv layers costed (dense by formula). All 16 runs:
+0 SpmAllocator violations. The "~90% of ∞ SPM" column is only a guide: the
+paper states OnSRAM-Static reaches ~90% of the infinite-SPM speedup
+overall, not per model. Not in the roster: Inception-v4, SSD300, PTB-LSTM,
+Multi-Head Attention.
+
+- Matches or close: AlexNet, ResNet-50, Inception-v3, GoogLeNet,
+  SqueezeNet1.1 (unfused).
+- MobileNetV1: limited by SCALE-Sim's compute (~2× ideal: half-empty tiles
+  and fill/drain on its many small late layers).
+- ResNeXt-50: same compute limit; the paper's version may also have been
+  much more memory-bound (a guess, not verified: TensorFlow had no native
+  grouped conv in 2018–2019, so ResNeXt was often built as 32 split
+  branches plus a concat, adding memory-bound nodes).
+- SqueezeNet1.1: ~1% above the paper's ∞ SPM bound, likely from the
+  BiasAdd nodes the unfuser adds after every conv.
+- Inception-v3 now runs (it used to fail in OnSRAM's placement step; FP16
+  halved tensor sizes, so placement succeeds).
+- New models (2026-09-26): AlexNet, GoogLeNet, ResNeXt-50, built with
+  `spm_common/build_paper_models.py`.
+
+| Model | Ours, fused | Ours, unfused | Paper 1-Step | Paper ∞ SPM | ~90% of ∞ SPM | Unfused vs paper |
+|---|---:|---:|---:|---:|---:|---|
+| AlexNet | 1.01× | **1.04×** | 1.04× | 1.04× | ~1.04× | matches |
+| ResNet-50 | 1.19× | **1.60×** | 1.33× | 1.75× | ~1.58× | matches |
+| Inception-v3 | 1.17× | **1.42×** | 1.10× | 1.64× | ~1.48× | close |
+| GoogLeNet | 1.29× | **1.61×** | 1.01× | 1.94× | ~1.75× | a bit low |
+| SqueezeNet1.1 | 2.01× | **2.87×** | 1.57× | 2.84× | ~2.56× | ~1% above ∞ SPM |
+| MobileNetV1 | 1.37× | **2.78×** | 2.84× | 5.17× | ~4.65× | below |
+| ResNeXt-50 | 1.19× | **1.73×** | 1.40× | 3.86× | ~3.47× | far below |
+| MobileNetV2 | 1.62× | **2.69×** | — | — | — | not in paper |
+| VGG16 | not run (runs out of memory; could crash the machine) | | 1.03× | 1.19× | | |
+
+### Against the paper's own OnSRAM-Static results (Fig. 7)
+
+What we model is OnSRAM-Static at 2 MB, so the right target is the paper's
+OnSRAM-Static bar in Fig. 7, not the 1-Step row (a simpler baseline scheme,
+also at 2 MB) or ∞ SPM (the upper bound). Fig. 7 prints only two of those
+bars as numbers (ResNeXt 3.81×, MobileNetV1 4.76×; both run off the top of
+the chart). The others were **measured from the figure**: page 15 rendered
+at 300 dpi, bars found by their legend colour, heights calibrated on the
+chart's 0/1/2/3 gridlines. Check: the chart's ∞ SPM bars read within
+0.01–0.02 of Table 1's printed values for every model (so expect about
+±0.02 on the values below), except GoogLeNet, where the paper's own chart
+(1.83) and table (1.94) disagree.
+
+Paper's OnSRAM-Static values read this way: AlexNet 1.02, VGG16 1.02,
+GoogLeNet 1.83, Inception-v3 1.29, Inception-v4 1.31, ResNet-50 1.49,
+SSD300 1.22, ResNeXt 3.81, MobileNetV1 4.76, SqueezeNet 2.20, PTB 1.00,
+Multi-Head Attention 1.06, geomean 1.59.
+
+| Model | Ours, fused | Ours, unfused | Paper OnSRAM-Static (Fig. 7) | Unfused vs paper |
+|---|---:|---:|---:|---:|
+| AlexNet | 1.01× | 1.04× | 1.02× | +2% |
+| ResNet-50 | 1.19× | 1.60× | 1.49× | +7% |
+| Inception-v3 | 1.17× | 1.42× | 1.29× | +10% |
+| GoogLeNet | 1.29× | 1.61× | 1.83× | −12% |
+| SqueezeNet1.1 | 2.01× | 2.87× | 2.20× | +30% |
+| ResNeXt-50 | 1.19× | 1.73× | 3.81× | −55% |
+| MobileNetV1 | 1.37× | 2.78× | 4.76× | −42% |
+| Geomean of these 7 | 1.29× | 1.76× | 2.03× | −13% |
+
+- Within ~10%: AlexNet, ResNet-50, Inception-v3; GoogLeNet 12% low.
+- SqueezeNet1.1 30% high (our unfused SqueezeNet has more memory-bound
+  work than the paper's; the extra BiasAdd nodes are the likely cause).
+- ResNeXt-50 and MobileNetV1 far low: compute-limited in SCALE-Sim (~2×
+  ideal), plus possibly a more memory-bound ResNeXt graph in the paper.
+

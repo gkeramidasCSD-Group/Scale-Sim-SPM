@@ -8,9 +8,9 @@ projects are separate jobs that happen to sit on the same SCALE-Sim engine,
 and a future change to COSMA's own topology_builder.py should never be able
 to change OnSRAM's behavior, or vice versa.
 
-SCALE-Sim only simulates conv-like (GEMM-mappable) layers -- ADD, DENSE
-(handled separately by SCALE-Sim's own GEMM path), REDUCE_MEAN, etc. have
-no topology row and get 0 compute/DRAM cost from SCALE-Sim's side.
+SCALE-Sim only simulates the conv layers written here. Every other layer
+(DENSE, ADD, CONCAT, pooling, PAD, REDUCE_MEAN, SOFTMAX, ...) has no
+topology row; the runner costs it analytically (_nonconv_layer_stats()).
 
 Depthwise conv has no native representation in SCALE-Sim's topology format
 (no "groups" concept). A real accelerator maps it channels-across-columns:
@@ -64,9 +64,9 @@ def build_onsram_topology(model_json_path: str, csv_path: str) -> Dict[int, int]
         if op not in ('CONV2D', 'DEPTHWISE_CONV2D'):
             continue
 
-        params = layer['params']
         in_shape = layer['input_shape']    # [N, H, W, C]
-        out_shape = layer['output_shape']  # [N, H, W, C]
+        out_shape = layer['output_shape']
+        params = layer['params']
         ifmap_h, ifmap_w = in_shape[1], in_shape[2]
         kh, kw = params['kh'], params['kw']
         stride = params.get('stride_h', 1)
@@ -84,7 +84,11 @@ def build_onsram_topology(model_json_path: str, csv_path: str) -> Dict[int, int]
             channels = 1
             num_filters = in_shape[3]
         else:
-            channels = in_shape[3]
+            # Grouped conv (e.g. ResNeXt): each filter sees only
+            # in_channels / groups inputs. groups is 1 for every
+            # ordinary conv, so this is a no-op for them.
+            groups = int(params.get('groups') or 1)
+            channels = in_shape[3] // groups
             num_filters = out_shape[3]
 
         row_index = len(rows)

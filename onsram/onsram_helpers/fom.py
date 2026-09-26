@@ -80,7 +80,10 @@ def estimate_node_flops(layer_meta: Dict[int, dict]) -> Dict[int, float]:
         if op_upper == "CONV2D":
             kh = params.get("kh", 3)
             kw = params.get("kw", 3)
-            macs = float(out_elements * kh * kw * input_channels)
+            # Grouped conv: each output sees input_channels / groups inputs
+            # (groups is 1 for every ordinary conv, as in the reference).
+            groups = int(params.get("groups") or 1)
+            macs = float(out_elements * kh * kw * input_channels / groups)
         elif op_upper == "DEPTHWISE_CONV2D":
             kh = params.get("kh", 3)
             kw = params.get("kw", 3)
@@ -122,7 +125,10 @@ def build_reuse_meta(layer_meta: Dict[int, dict]) -> Dict[int, dict]:
         cout, kh, kw, cin = 1, 1, 1, 1
 
         if op_upper == "CONV2D":
-            cout = output_shape[-1] if output_shape else 1
+            # Grouped conv: an input element is reused only by its own
+            # group's filters (groups is 1 for every ordinary conv).
+            groups = int(params.get('groups') or 1)
+            cout = (output_shape[-1] if output_shape else 1) // groups
             kh = params.get('kh', 3)
             kw = params.get('kw', 3)
             cin = input_shape[-1] if input_shape else 1
@@ -205,7 +211,8 @@ def infer_node_type(node_id: int, layer_meta: Dict[int, dict],
         cout = output_shape[-1] if output_shape else 1
         kh = params.get('kh', 3)
         kw = params.get('kw', 3)
-        weight_bytes = float(cin * cout * kh * kw * bytes_per_element)
+        groups = int(params.get('groups') or 1)
+        weight_bytes = float(cin * cout * kh * kw * bytes_per_element / groups)
     elif op_upper == "DEPTHWISE_CONV2D":
         cin = input_shape[-1] if input_shape else 1
         kh = params.get('kh', 3)

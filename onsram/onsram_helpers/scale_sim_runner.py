@@ -107,6 +107,53 @@ def _ofmap_tensor_id(layer: dict):
     return outputs[0] if outputs else None
 
 
+# Layers that only re-describe a tensor (no data moves on a real accelerator).
+_VIEW_OPS = ('RESHAPE', 'SQUEEZE', 'FLATTEN', 'EXPAND_DIMS')
+
+
+def _nonconv_layer_stats(layer: dict, t: int, tensor_shapes: Dict[int, dict],
+                          resident_action: dict = None,
+                          handoff_action: dict = None, array_dims=(32, 32)) -> dict:
+    """
+    Cost of a layer SCALE-Sim doesn't simulate (ADD, CONCAT, pooling, PAD,
+    SUB/MUL, REDUCE_MEAN, SOFTMAX, ...), the paper's way: pure data
+    movement -- each activation input read once and each output written
+    once, at BYTES_PER_ELEMENT; compute ~0 (these ops do almost no math per
+    byte; on the paper's 375 GFLOP SIMD unit they're memory-bound). In the
+    OnSRAM-aware pass an input in the SPM ('P' or 'H') and a pinned output
+    ('C') cost nothing, exactly like a conv layer's.
+
+    DENSE (batch 1) is costed analytically instead of through SCALE-Sim:
+    SCALE-Sim's buffer bookkeeping needs per-weight tables and runs out of
+    memory on large dense layers (AlexNet's 9216x4096 needed >5GB). A
+    batch-1 dense layer produces one output pixel, so its compute time is
+    SCALE-Sim's own weight-stationary fold formula,
+    ceil(in/rows) * ceil(out/cols) * (1 + rows + cols - 1), which matches
+    SCALE-Sim's measured cycles to ~1% on convs; its traffic is the weights
+    once plus the input and output vectors.
+    """
+    zero = {'compute_cycles': 0, 'ifmap_dram_bytes': 0,
+            'filter_dram_bytes': 0, 'ofmap_dram_bytes': 0}
+    if layer['op'] in _VIEW_OPS:
+        return zero
+    size = lambda tid: _tensor_size_bytes(tensor_shapes[tid]['shape'])
+    inputs = layer.get('inputs', [])
+    inputs_from = layer.get('inputs_from', [-1] * len(inputs))
+    acts = [tid for tid, src in zip(inputs, inputs_from) if src != -1] or inputs[:1]
+    reads = sum(size(tid) for tid in acts
+                if not _ifmap_in_spm(resident_action, handoff_action, tid, t))
+    writes = sum(size(tid) for tid in layer.get('outputs', [])
+                 if not (resident_action is not None
+                         and resident_action.get((tid, t)) == 'C'))
+    stats = {**zero, 'ifmap_dram_bytes': reads, 'ofmap_dram_bytes': writes}
+    if layer['op'] == 'DENSE':
+        rows, cols = array_dims
+        n_in, n_out = layer['input_shape'][-1], layer['output_shape'][-1]
+        stats['compute_cycles'] = math.ceil(n_in / rows) * math.ceil(n_out / cols) * (rows + cols)
+        stats['filter_dram_bytes'] = _layer_operand_bytes(layer, tensor_shapes)[2]
+    return stats
+
+
 def _split_free_room(room: int, needs: dict) -> dict:
     """
     Splits a layer's free SPM room (what's left after resident tensors)
@@ -408,6 +455,7 @@ def _run_layers(model_json_path: str, config_path: str,
     filter_ceiling_events = []
 
     row_to_stats: Dict[int, dict] = {}
+    nonconv_stats: Dict[int, dict] = {}
     for t, lid in schedule:
         layer = layer_by_id[lid]
         if allocator is not None:
@@ -420,6 +468,10 @@ def _run_layers(model_json_path: str, config_path: str,
             # resident_action/spm_plan are keyed by), not lid.
             allocator.step(t)
         if lid not in layer_id_to_row:
+            nonconv_stats[lid] = _nonconv_layer_stats(layer, t, tensor_shapes, resident_action,
+                                                       handoff_action, config.get_array_dims())
+            handoff_reads += sum(1 for tid in layer.get('inputs', [])
+                                 if (handoff_action or {}).get((tid, t)) == 'H')
             continue
 
         if allocator is not None:
@@ -472,8 +524,7 @@ def _run_layers(model_json_path: str, config_path: str,
               f"peak occupancy {allocator.peak_occupied_bytes()}/{memory_budget_bytes} "
               f"bytes, 0 violations")
         print(f"[OnSRAM SPM] {handoff_reads} of {len(handoff_action or {})} Overwrite "
-              f"Optimization hand-off read(s) ('H') served from SPM by a simulated "
-              f"conv layer (the rest are read by non-conv layers SCALE-Sim doesn't run)")
+              f"Optimization hand-off read(s) ('H') served from SPM")
         print(f"[OnSRAM SPM] {pinned_outputs} of {simulated_layers} simulated layers keep "
               f"their output on-chip (pinned); the other {simulated_layers - pinned_outputs} "
               f"write it back to DRAM")
@@ -498,8 +549,9 @@ def _run_layers(model_json_path: str, config_path: str,
         if lid in layer_id_to_row:
             layer_stats[lid] = row_to_stats[layer_id_to_row[lid]]
         else:
-            layer_stats[lid] = {'compute_cycles': 0, 'ifmap_dram_bytes': 0,
-                                 'filter_dram_bytes': 0, 'ofmap_dram_bytes': 0}
+            layer_stats[lid] = nonconv_stats.get(lid, {
+                'compute_cycles': 0, 'ifmap_dram_bytes': 0,
+                'filter_dram_bytes': 0, 'ofmap_dram_bytes': 0})
 
     return layer_stats
 

@@ -106,6 +106,57 @@ def _depthwise_channels(layer: dict):
     return layer['input_shape'][3]
 
 
+# Layers that only re-describe a tensor (no data moves on a real accelerator).
+_VIEW_OPS = ('RESHAPE', 'SQUEEZE', 'FLATTEN', 'EXPAND_DIMS')
+
+
+def _nonconv_layer_stats(layer: dict, t: int, tensor_shapes: Dict[int, dict],
+                          resident_action: dict = None, array_dims=(32, 32)) -> dict:
+    """
+    Cost of a layer SCALE-Sim doesn't simulate (ADD, CONCAT, pooling, PAD,
+    SUB/MUL, REDUCE_MEAN, SOFTMAX, ...): pure data movement -- each
+    activation input read once and each output written once, compute ~0
+    (these ops do almost no math per byte, so they're memory-bound).
+    Counted in elements, the same unit as SCALE-Sim's DRAM counts for
+    conv layers. In the COSMA-aware pass: an input that's 'P' costs
+    nothing, an input that's 'R' is already charged by run_cosma.py's
+    idealized-retrieve accounting (so it's 0 here, not charged twice), and
+    the output stays on-chip as for every layer in COSMA's model (Eq. 7).
+
+    DENSE (batch 1) is costed analytically instead of through SCALE-Sim:
+    SCALE-Sim's buffer bookkeeping needs per-weight tables and runs out of
+    memory on large dense layers (AlexNet's 9216x4096 needed >5GB). A
+    batch-1 dense layer produces one output pixel, so its compute time is
+    SCALE-Sim's own weight-stationary fold formula,
+    ceil(in/rows) * ceil(out/cols) * (1 + rows + cols - 1), which matches
+    SCALE-Sim's measured cycles to ~1% on convs; its traffic is the weights
+    once plus the input and output vectors.
+    A DENSE layer's 'R' input IS charged here: run_cosma.py treats DENSE as
+    conv-like and counts that read as a real retrieve from these stats.
+    """
+    zero = {'compute_cycles': 0, 'ifmap_dram_bytes': 0,
+            'filter_dram_bytes': 0, 'ofmap_dram_bytes': 0}
+    if layer['op'] in _VIEW_OPS:
+        return zero
+    elems = lambda tid: math.prod(tensor_shapes[tid]['shape']) if tensor_shapes[tid]['shape'] else 1
+    inputs = layer.get('inputs', [])
+    inputs_from = layer.get('inputs_from', [-1] * len(inputs))
+    acts = [tid for tid, src in zip(inputs, inputs_from) if src != -1] or inputs[:1]
+    free_reads = ('P',) if layer['op'] == 'DENSE' else ('P', 'R')
+    reads = sum(elems(tid) for tid in acts
+                if resident_action is None or resident_action.get((tid, t)) not in free_reads)
+    writes = (sum(elems(tid) for tid in layer.get('outputs', []))
+              if resident_action is None else 0)
+    stats = {**zero, 'ifmap_dram_bytes': reads, 'ofmap_dram_bytes': writes}
+    if layer['op'] == 'DENSE':
+        rows, cols = array_dims
+        n_in, n_out = layer['input_shape'][-1], layer['output_shape'][-1]
+        stats['compute_cycles'] = math.ceil(n_in / rows) * math.ceil(n_out / cols) * (rows + cols)
+        stats['filter_dram_bytes'] = sum(part.get('elements', 0) for part in
+                                         (layer.get('weights', {}), layer.get('bias', {})))
+    return stats
+
+
 def _split_free_room(room: int, needs: dict) -> dict:
     """
     Splits a layer's free SPM room (what's left after resident tensors)
@@ -382,6 +433,7 @@ def _run_layers(model_json_path: str, config_path: str,
     filter_ceiling_events = []
 
     row_to_stats: Dict[int, dict] = {}
+    nonconv_stats: Dict[int, dict] = {}
     for t, lid in schedule:
         layer = layer_by_id[lid]
         if allocator is not None:
@@ -396,6 +448,8 @@ def _run_layers(model_json_path: str, config_path: str,
             # keyed by), not lid -- those differ once schedule is free.
             allocator.step(t)
         if lid not in layer_id_to_row:
+            nonconv_stats[lid] = _nonconv_layer_stats(layer, t, tensor_shapes, resident_action,
+                                                       config.get_array_dims())
             continue
 
         if allocator is not None:
@@ -466,8 +520,9 @@ def _run_layers(model_json_path: str, config_path: str,
         if lid in layer_id_to_row:
             layer_stats[lid] = row_to_stats[layer_id_to_row[lid]]
         else:
-            layer_stats[lid] = {'compute_cycles': 0, 'ifmap_dram_bytes': 0,
-                                 'filter_dram_bytes': 0, 'ofmap_dram_bytes': 0}
+            layer_stats[lid] = nonconv_stats.get(lid, {
+                'compute_cycles': 0, 'ifmap_dram_bytes': 0,
+                'filter_dram_bytes': 0, 'ofmap_dram_bytes': 0})
 
     return layer_stats
 

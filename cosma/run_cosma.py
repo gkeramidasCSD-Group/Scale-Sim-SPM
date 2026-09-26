@@ -237,7 +237,7 @@ def run_cosma(model_json_path: str = DEFAULT_MODEL_JSON,
         spm_plan=result['spm_plan'], tensors=tensors,
         memory_budget_bytes=memory_budget_bytes, schedule=schedule, verbose=verbose)
 
-    CONV_LIKE_OPS = ('CONV2D', 'DEPTHWISE_CONV2D')
+    CONV_LIKE_OPS = ('CONV2D', 'DEPTHWISE_CONV2D', 'DENSE')  # DENSE: 1x1-conv row, see topology_builder.py
 
     baseline_total_cycles = 0
     cosma_total_cycles = 0

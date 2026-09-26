@@ -62,7 +62,7 @@ DEFAULT_CONFIG = os.path.join(os.path.dirname(HERE), 'configs', 'scale.cfg')
 DEFAULT_RESULTS_DIR = os.path.join(HERE, 'results')
 DEFAULT_LOGS_DIR = os.path.join(HERE, 'logs')
 
-CONV_LIKE_OPS = ('CONV2D', 'DEPTHWISE_CONV2D')
+CONV_LIKE_OPS = ('CONV2D', 'DEPTHWISE_CONV2D', 'DENSE')  # DENSE: 1x1-conv row, see topology_builder.py
 
 POLICY_FNS = {
     'belady': belady_policy.choose_victims,

@@ -9,7 +9,8 @@ DRAM, 2 MB SPM), unless it's marked as the paper's.*
 > MobileNetV2 1.63×, each at 98–100% of our own infinite-SPM ceiling. What
 > still separates us from the paper's headline numbers is explained in
 > "Why compute takes so much of the execution time in our setup" near the
-> end. In short: our graphs are fused (the paper's fused-layer result is
+> end. In short: our TFLite graphs have BatchNorm/ReLU folded into the
+> convs (in the paper's one layer-fusion experiment, §7.1.6, OnSRAM gets
 > 1.01–2.17×, avg 1.31×), and SCALE-Sim's array needs 1.6–2× the ideal
 > compute time. The sections below keep the original analysis and
 > numbers, with a "Status" note on each fix.
@@ -367,7 +368,7 @@ Paper config, 2 MB SPM, batch 1. Code state: hand-off reads from SPM,
 channels-across-columns depthwise, ideal tiling, pinned-only free outputs,
 FP16, fetch-once traffic, stall-free compute.
 
-| Model | Ours | Our ceiling (infinite SPM) | Paper, fused layers (§7.1.6) | Paper, unfused (Table 1 / Fig. 7) |
+| Model | Ours | Our ceiling (infinite SPM) | Paper's layer-fusion experiment (§7.1.6; range across models only) | Paper, main results (Table 1 / Fig. 7) |
 |---|---:|---:|---|---|
 | MobileNetV1 | **1.36×** | 1.38× | range 1.01–2.17×, avg 1.31× | 1-Step 2.84×, ∞ SPM 5.17× |
 | SqueezeNet1.1 | **1.24×** | 1.24× | (same range, per-model not given) | 1-Step 1.57×, ∞ SPM 2.84× |
@@ -380,6 +381,114 @@ Every run: 0 `SpmAllocator` violations. OnSRAM reaches 98–100% of our own
 ceiling on every model, so the pinning itself is doing its job. What
 limits the speedup is how much of each layer's time is compute, explained
 next.
+
+## Results with non-conv layers costed and unfused graphs (2026-09-26)
+
+Two more changes since the table above:
+- **Non-conv layers are now costed** (both COSMA and OnSRAM): DENSE runs
+  through SCALE-Sim as a 1×1 conv; ADD, CONCAT, pooling, PAD, SUB/MUL,
+  REDUCE_MEAN and SOFTMAX are costed as pure data movement (each input
+  read once, each output written once), with the same SPM rules as conv
+  layers. Before, they cost 0 in both runs.
+- **Unfused models**: `spm_common/unfuse_model.py` rebuilds the separate
+  BatchNorm/BiasAdd/ReLU nodes that TFLite folded into the convs (ported
+  from the reference implementation's `onsram_bw/onsram_unfused.py`, with
+  ReLU only where the model had one and BatchNorm only for networks that
+  had it). Output: `cosma/_exported/<model>_unfused/model.json`.
+
+| Model | Ours, fused | Ours, unfused | Paper 1-Step | Paper ∞ SPM | ~90% of ∞ SPM |
+|---|---:|---:|---:|---:|---:|
+| ResNet-50 | 1.19× | **1.60×** | 1.33× | 1.75× | ~1.58× |
+| SqueezeNet1.1 | 2.01× | **2.87×** | 1.57× | 2.84× | ~2.56× |
+| MobileNetV1 | 1.37× | **2.78×** | 2.84× | 5.17× | ~4.65× |
+| MobileNetV2 | 1.60× | **2.66×** | — | — | — |
+
+The last column is only a guide: the paper says OnSRAM-Static reaches
+"90% of that achievable by the ideal Infinite SPM" as an overall
+statement, not per model. Every run: 0 SpmAllocator violations, every
+hand-off read served from SPM, 97–99% of tensors pinned.
+
+- ResNet-50 unfused matches the paper closely.
+- SqueezeNet1.1 unfused lands about 1% above the paper's own ∞ SPM
+  bound. Likely because the unfuser adds a separate BiasAdd after every
+  conv (TensorFlow's usual Conv2D + BiasAdd + ReLU); if the paper's graph
+  had bias inside its convs, ours has a little extra memory-bound work.
+- MobileNetV1 unfused is the remaining gap. OnSRAM's run is almost
+  entirely compute time (881,247 cycles), and SCALE-Sim's array needs
+  ~2× the ideal compute for MobileNet (next section).
+
+## Full roster vs the paper (2026-09-26)
+
+Paper config (39×39 array, 32 B/cycle, 2 MB SPM, batch 1, FP16), final
+code state: hand-off reads from SPM, channels-across-columns depthwise,
+grouped convs, ideal tiling, pinned-only free outputs, fetch-once traffic,
+stall-free compute, non-conv layers costed (dense by formula). All 16 runs:
+0 SpmAllocator violations. The "~90% of ∞ SPM" column is only a guide: the
+paper states OnSRAM-Static reaches ~90% of the infinite-SPM speedup
+overall, not per model. Not in the roster: Inception-v4, SSD300, PTB-LSTM,
+Multi-Head Attention.
+
+- Matches or close: AlexNet, ResNet-50, Inception-v3, GoogLeNet,
+  SqueezeNet1.1 (unfused).
+- MobileNetV1: limited by SCALE-Sim's compute (~2× ideal: half-empty tiles
+  and fill/drain on its many small late layers).
+- ResNeXt-50: same compute limit; the paper's version may also have been
+  much more memory-bound (a guess, not verified: TensorFlow had no native
+  grouped conv in 2018–2019, so ResNeXt was often built as 32 split
+  branches plus a concat, adding memory-bound nodes).
+- SqueezeNet1.1: ~1% above the paper's ∞ SPM bound, likely from the
+  BiasAdd nodes the unfuser adds after every conv.
+- Inception-v3 now runs (it used to fail in OnSRAM's placement step; FP16
+  halved tensor sizes, so placement succeeds).
+- New models (2026-09-26): AlexNet, GoogLeNet, ResNeXt-50, built with
+  `spm_common/build_paper_models.py`.
+
+| Model | Ours, fused | Ours, unfused | Paper 1-Step | Paper ∞ SPM | ~90% of ∞ SPM | Unfused vs paper |
+|---|---:|---:|---:|---:|---:|---|
+| AlexNet | 1.01× | **1.04×** | 1.04× | 1.04× | ~1.04× | matches |
+| ResNet-50 | 1.19× | **1.60×** | 1.33× | 1.75× | ~1.58× | matches |
+| Inception-v3 | 1.17× | **1.42×** | 1.10× | 1.64× | ~1.48× | close |
+| GoogLeNet | 1.29× | **1.61×** | 1.01× | 1.94× | ~1.75× | a bit low |
+| SqueezeNet1.1 | 2.01× | **2.87×** | 1.57× | 2.84× | ~2.56× | ~1% above ∞ SPM |
+| MobileNetV1 | 1.37× | **2.78×** | 2.84× | 5.17× | ~4.65× | below |
+| ResNeXt-50 | 1.19× | **1.73×** | 1.40× | 3.86× | ~3.47× | far below |
+| MobileNetV2 | 1.62× | **2.69×** | — | — | — | not in paper |
+| VGG16 | not run (runs out of memory; could crash the machine) | | 1.03× | 1.19× | | |
+
+### Against the paper's own OnSRAM-Static results (Fig. 7)
+
+What we model is OnSRAM-Static at 2 MB, so the right target is the paper's
+OnSRAM-Static bar in Fig. 7, not the 1-Step row (a simpler baseline scheme,
+also at 2 MB) or ∞ SPM (the upper bound). Fig. 7 prints only two of those
+bars as numbers (ResNeXt 3.81×, MobileNetV1 4.76×; both run off the top of
+the chart). The others were **measured from the figure**: page 15 rendered
+at 300 dpi, bars found by their legend colour, heights calibrated on the
+chart's 0/1/2/3 gridlines. Check: the chart's ∞ SPM bars read within
+0.01–0.02 of Table 1's printed values for every model (so expect about
+±0.02 on the values below), except GoogLeNet, where the paper's own chart
+(1.83) and table (1.94) disagree.
+
+Paper's OnSRAM-Static values read this way: AlexNet 1.02, VGG16 1.02,
+GoogLeNet 1.83, Inception-v3 1.29, Inception-v4 1.31, ResNet-50 1.49,
+SSD300 1.22, ResNeXt 3.81, MobileNetV1 4.76, SqueezeNet 2.20, PTB 1.00,
+Multi-Head Attention 1.06, geomean 1.59.
+
+| Model | Ours, fused | Ours, unfused | Paper OnSRAM-Static (Fig. 7) | Unfused vs paper |
+|---|---:|---:|---:|---:|
+| AlexNet | 1.01× | 1.04× | 1.02× | +2% |
+| ResNet-50 | 1.19× | 1.60× | 1.49× | +7% |
+| Inception-v3 | 1.17× | 1.42× | 1.29× | +10% |
+| GoogLeNet | 1.29× | 1.61× | 1.83× | −12% |
+| SqueezeNet1.1 | 2.01× | 2.87× | 2.20× | +30% |
+| ResNeXt-50 | 1.19× | 1.73× | 3.81× | −55% |
+| MobileNetV1 | 1.37× | 2.78× | 4.76× | −42% |
+| Geomean of these 7 | 1.29× | 1.76× | 2.03× | −13% |
+
+- Within ~10%: AlexNet, ResNet-50, Inception-v3; GoogLeNet 12% low.
+- SqueezeNet1.1 30% high (our unfused SqueezeNet has more memory-bound
+  work than the paper's; the extra BiasAdd nodes are the likely cause).
+- ResNeXt-50 and MobileNetV1 far low: compute-limited in SCALE-Sim (~2×
+  ideal), plus possibly a more memory-bound ResNeXt graph in the paper.
 
 ## Why compute takes so much of the execution time in our setup
 
@@ -441,7 +550,7 @@ and 856,159) from pipeline details the formula leaves out.
 
 With traffic counted exactly as now, the infinite-SPM ceiling becomes:
 
-| | SCALE-Sim compute | Ideal compute | Paper ∞ SPM (unfused) |
+| | SCALE-Sim compute | Ideal compute | Paper ∞ SPM (Table 1) |
 |---|---:|---:|---:|
 | SqueezeNet1.1 | 1.28× | 1.69× | 2.84× |
 | MobileNet | 1.44× | 1.91× | 5.17× |
@@ -449,38 +558,51 @@ With traffic counted exactly as now, the infinite-SPM ceiling becomes:
 So compute explains part of the gap, but even an ideal array would leave
 us well below the paper's headline numbers. The rest is the next point.
 
-### The bigger reason: the paper's headline uses unfused graphs
+### The bigger reason: the paper's graphs have BatchNorm/ReLU as separate nodes
 
-The paper's main results run TensorFlow graphs where **BatchNorm, ReLU and
-BiasAdd are separate nodes**. Each of those reads and writes a whole
-activation tensor while doing almost no math, so they're extremely
-memory-bound. That's exactly where OnSRAM wins (§7.1.3: "the activation-
-bound layers such as ReLU, Pooling, and 'others' get pinned… the
-performance benefits stem from the fact that the data transfer times for
-these critical layers are drastically reduced").
+**What the paper states, and what is our inference.** The paper doesn't
+label its results "fused" or "unfused". What it states:
+- OnSRAM-Static takes "an optimized graph of the DNN from the DL framework
+  (e.g., TensorFlow's ProtoBuf graph)" (§4). In such graphs BatchNorm,
+  ReLU and BiasAdd are separate ops.
+- §7.1.3 / Fig. 11 report ReLU and BatchNorm as their own layer types, with
+  their inputs pinned: "the activation-bound layers such as ReLU, Pooling,
+  and 'others' get pinned… the performance benefits stem from the fact
+  that the data transfer times for these critical layers are drastically
+  reduced."
+- §7.1.6 "Comparison with Layer Fusion", one paragraph: "We implemented
+  layer fusion for OnSRAM-Static combining Conv/MatMul layers with
+  BatchNorm-ReLU-BiasAdd. With that, OnSRAM-Static achieves a speedup of
+  1.01–2.17× (average 1.31×) relative to No SPM Mgmt with layer fusion."
+  A range and an average across models; no per-model numbers.
 
-Our models are TFLite exports where BatchNorm and ReLU are already
-**fused** into the convolutions, and the remaining small ops (ADD, CONCAT,
-pooling) aren't simulated at all (0 cost in both runs). So our graphs have
-almost none of the nodes that give OnSRAM its big wins.
+Our inference from those three: the main results (Table 1, Fig. 7) run
+with BatchNorm/ReLU/BiasAdd as separate nodes, and fusion was only that
+one extra experiment. Each of those nodes reads and writes a whole
+activation tensor for almost no math, so it's strongly memory-bound,
+which is exactly where OnSRAM wins.
 
-The paper measured this case too. §7.1.6: with layer fusion (Conv/MatMul
-combined with BatchNorm-ReLU-BiasAdd), OnSRAM-Static achieves **1.01–2.17×,
-average 1.31×**. That's the fair comparison for our fused models, and our
-results (1.24–1.63×) sit inside that range.
+Our TFLite models have BatchNorm folded into the conv weights and ReLU
+fused into the convs, so they have almost none of those nodes. The
+closest thing the paper reports for that situation is the §7.1.6 range
+(1.01–2.17×, avg 1.31×). Our fused-model results fall inside it, but a
+range across many models can't confirm any single model.
+`spm_common/unfuse_model.py` rebuilds the separate nodes so we can
+compare against Table 1 directly.
 
 ### What we could still do
 
-- **Compare against the paper's fused numbers** (1.01–2.17×, avg 1.31×)
-  rather than Table 1. No code change; it's the like-for-like comparison.
+- **Compare our fused models against the §7.1.6 layer-fusion range**
+  (1.01–2.17×, avg 1.31×), keeping in mind it has no per-model numbers.
 - **Simulate the non-conv ops** (ADD, CONCAT, pooling) as memory-bound
   nodes (bytes in + bytes out, little compute). They currently cost 0,
   which hides some of OnSRAM's benefit.
 - **Use ideal compute (FLOPs ÷ peak)** instead of SCALE-Sim's array, to
   mirror a roofline model. That would drop the cycle-level array
   simulation, and it only closes part of the gap (see the table above).
-- Unfused graphs would need a different exporter (the reference
-  implementation's `onsram_bw/` tree explored fused vs unfused).
+- **Run unfused graphs** made by `spm_common/unfuse_model.py` (ported from
+  the reference implementation's `onsram_bw/onsram_unfused.py`) and
+  compare against Table 1 directly.
 
 ---
 
