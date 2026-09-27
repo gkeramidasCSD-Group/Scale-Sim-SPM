@@ -1,0 +1,50 @@
+Sat Sep 26 15:24:58 2026    /home/george/Desktop/SCALE-Sim/benchmark/cprofile_compare/profiles/vanilla.pstats
+
+         105111285 function calls (105111238 primitive calls) in 98.667 seconds
+
+   Ordered by: cumulative time
+   List reduced from 522 to 40 due to restriction <40>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        2    0.000    0.000   98.667   49.333 /home/george/Music/SCALE-Sim/scalesim/scale_sim.py:111(run_scale)
+        2    0.000    0.000   98.667   49.333 /home/george/Music/SCALE-Sim/scalesim/scale_sim.py:129(run_once)
+        2    0.000    0.000   98.667   49.333 /home/george/Music/SCALE-Sim/scalesim/simulator.py:65(run)
+        6    0.311    0.052   89.530   14.922 /home/george/Music/SCALE-Sim/scalesim/single_layer_sim.py:186(run)
+        6    5.043    0.840   71.013   11.835 /home/george/Music/SCALE-Sim/scalesim/memory/double_buffered_scratchpad_mem.py:234(service_memory_requests)
+   295320    4.547    0.000   28.876    0.000 /home/george/Music/SCALE-Sim/scalesim/memory/read_buffer.py:274(service_reads)
+   295320    3.114    0.000   18.964    0.000 /home/george/Music/SCALE-Sim/scalesim/memory/read_buffer_estimate_bw.py:111(service_reads)
+   295320    3.784    0.000   16.963    0.000 /home/george/Music/SCALE-Sim/scalesim/memory/write_buffer.py:189(service_writes)
+  4627491    2.619    0.000   15.850    0.000 /home/george/Music/SCALE-Sim/scalesim/memory/read_buffer_estimate_bw.py:140(manage_prefetches)
+  4627631   14.956    0.000   14.956    0.000 /home/george/Music/SCALE-Sim/scalesim/memory/read_buffer.py:225(active_buffer_hit)
+  4627491   11.715    0.000   12.335    0.000 /home/george/Music/SCALE-Sim/scalesim/memory/read_buffer_estimate_bw.py:200(check_hit)
+   590652    1.730    0.000   11.339    0.000 /home/george/.local/lib/python3.10/site-packages/tqdm/std.py:952(__init__)
+        3    0.000    0.000   10.306    3.435 /home/george/Music/SCALE-Sim/scalesim/memory/double_buffered_scratchpad_mem.py:175(set_read_buf_prefetch_matrices)
+        6    5.184    0.864   10.306    1.718 /home/george/Music/SCALE-Sim/scalesim/memory/read_buffer.py:145(set_fetch_matrix)
+        6    0.000    0.000    8.769    1.461 /home/george/Music/SCALE-Sim/scalesim/single_layer_sim.py:300(save_traces)
+       36    7.954    0.221    8.730    0.242 /home/george/.local/lib/python3.10/site-packages/numpy/lib/npyio.py:1390(savetxt)
+        6    0.000    0.000    7.122    1.187 /home/george/Music/SCALE-Sim/scalesim/compute/systolic_compute_ws.py:511(get_prefetch_matrices)
+        6    0.000    0.000    7.122    1.187 /home/george/Music/SCALE-Sim/scalesim/compute/systolic_compute_ws.py:115(create_prefetch_matrices)
+        6    6.379    1.063    7.121    1.187 /home/george/Music/SCALE-Sim/scalesim/compute/systolic_compute_ws.py:128(create_ifmap_prefetch_mat)
+  2626248    3.358    0.000    4.243    0.000 /home/george/Music/SCALE-Sim/scalesim/memory/write_buffer.py:115(store_to_trace_mat_cache)
+   590652    1.132    0.000    4.118    0.000 /home/george/.local/lib/python3.10/site-packages/tqdm/std.py:663(__new__)
+        6    3.573    0.596    4.022    0.670 /home/george/Music/SCALE-Sim/scalesim/memory/read_buffer.py:173(prepare_hashed_buffer)
+   590652    0.877    0.000    3.728    0.000 /home/george/.local/lib/python3.10/site-packages/tqdm/std.py:679(_get_free_pos)
+        6    0.000    0.000    3.180    0.530 /home/george/Music/SCALE-Sim/scalesim/memory/double_buffered_scratchpad_mem.py:725(print_ifmap_dram_trace)
+   590652    1.133    0.000    2.669    0.000 /home/george/.local/lib/python3.10/site-packages/tqdm/utils.py:213(__init__)
+   590652    0.293    0.000    2.536    0.000 /home/george/.local/lib/python3.10/site-packages/tqdm/std.py:682(<setcomp>)
+  1181304    0.712    0.000    2.243    0.000 /usr/lib/python3.10/_weakrefset.py:63(__iter__)
+        6    0.000    0.000    1.801    0.300 /home/george/Music/SCALE-Sim/scalesim/memory/read_buffer.py:578(print_trace)
+        6    0.000    0.000    1.703    0.284 /home/george/Music/SCALE-Sim/scalesim/memory/double_buffered_scratchpad_mem.py:700(print_ifmap_sram_trace)
+   590652    0.263    0.000    1.668    0.000 /usr/lib/python3.10/_weakrefset.py:111(remove)
+  1181304    0.384    0.000    1.589    0.000 /home/george/.local/lib/python3.10/site-packages/tqdm/std.py:110(__enter__)
+  1181304    0.338    0.000    1.514    0.000 /home/george/.local/lib/python3.10/site-packages/tqdm/std.py:113(__exit__)
+        6    0.000    0.000    1.499    0.250 /home/george/Music/SCALE-Sim/scalesim/memory/double_buffered_scratchpad_mem.py:717(print_ofmap_sram_trace)
+  1181304    0.426    0.000    1.484    0.000 {method 'remove' of 'set' objects}
+        6    0.000    0.000    1.388    0.231 /home/george/Music/SCALE-Sim/scalesim/memory/read_buffer_estimate_bw.py:365(print_trace)
+        6    0.000    0.000    1.369    0.228 /home/george/Music/SCALE-Sim/scalesim/memory/double_buffered_scratchpad_mem.py:709(print_filter_sram_trace)
+  9851092    1.069    0.000    1.288    0.000 {method 'add' of 'set' objects}
+  1181304    0.860    0.000    1.205    0.000 /home/george/.local/lib/python3.10/site-packages/tqdm/std.py:102(acquire)
+  1181304    0.894    0.000    1.176    0.000 /home/george/.local/lib/python3.10/site-packages/tqdm/std.py:106(release)
+   590924    1.120    0.000    1.120    0.000 {built-in method numpy.asarray}
+
+

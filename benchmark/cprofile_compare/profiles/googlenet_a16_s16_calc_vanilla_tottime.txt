@@ -1,0 +1,50 @@
+Sat Sep 26 16:08:27 2026    /home/george/Desktop/SCALE-Sim/benchmark/cprofile_compare/profiles/googlenet_a16_s16_calc_vanilla.pstats
+
+         1072319591 function calls (1072319544 primitive calls) in 1260.304 seconds
+
+   Ordered by: internal time
+   List reduced from 510 to 40 due to restriction <40>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+ 91459476  232.601    0.000  245.476    0.000 /home/george/Music/SCALE-Sim/scalesim/memory/read_buffer_estimate_bw.py:200(check_hit)
+      348  130.353    0.375  142.418    0.409 /home/george/.local/lib/python3.10/site-packages/numpy/lib/npyio.py:1390(savetxt)
+       58  111.381    1.920 1095.621   18.890 /home/george/Music/SCALE-Sim/scalesim/memory/double_buffered_scratchpad_mem.py:234(service_memory_requests)
+ 85167424  105.374    0.000  132.784    0.000 /home/george/Music/SCALE-Sim/scalesim/memory/write_buffer.py:115(store_to_trace_mat_cache)
+ 13129012   93.207    0.000  473.591    0.000 /home/george/Music/SCALE-Sim/scalesim/memory/read_buffer_estimate_bw.py:111(service_reads)
+  6564506   81.673    0.000  484.020    0.000 /home/george/Music/SCALE-Sim/scalesim/memory/write_buffer.py:189(service_writes)
+    10558   70.038    0.007   73.421    0.007 /home/george/Music/SCALE-Sim/scalesim/memory/read_buffer_estimate_bw.py:256(prefetch)
+    10421   57.056    0.005   57.106    0.005 /home/george/Music/SCALE-Sim/scalesim/memory/write_buffer.py:150(append_to_trace_mat)
+ 91459476   53.841    0.000  380.382    0.000 /home/george/Music/SCALE-Sim/scalesim/memory/read_buffer_estimate_bw.py:140(manage_prefetches)
+ 10654621   20.673    0.000   26.706    0.000 /home/george/.local/lib/python3.10/site-packages/numpy/core/numeric.py:136(ones)
+  6564622   20.167    0.000  132.804    0.000 /home/george/.local/lib/python3.10/site-packages/tqdm/std.py:952(__init__)
+  6586076   16.725    0.000   16.725    0.000 {built-in method numpy.asarray}
+ 98872745   14.460    0.000   14.460    0.000 {built-in method builtins.min}
+  6564622   13.558    0.000   49.910    0.000 /home/george/.local/lib/python3.10/site-packages/tqdm/std.py:663(__new__)
+  6564622   13.497    0.000   32.066    0.000 /home/george/.local/lib/python3.10/site-packages/tqdm/utils.py:213(__init__)
+ 98595552   11.144    0.000   13.840    0.000 {method 'add' of 'set' objects}
+ 13129244   10.653    0.000   14.940    0.000 /home/george/.local/lib/python3.10/site-packages/tqdm/std.py:102(acquire)
+ 26289852   10.379    0.000   10.379    0.000 {method 'reshape' of 'numpy.ndarray' objects}
+ 13129244   10.177    0.000   13.577    0.000 /home/george/.local/lib/python3.10/site-packages/tqdm/std.py:106(release)
+  6564622   10.047    0.000   44.298    0.000 /home/george/.local/lib/python3.10/site-packages/tqdm/std.py:679(_get_free_pos)
+ 13129244    8.575    0.000   27.068    0.000 /usr/lib/python3.10/_weakrefset.py:63(__iter__)
+       58    8.381    0.145    9.436    0.163 /home/george/Music/SCALE-Sim/scalesim/compute/systolic_compute_ws.py:128(create_ifmap_prefetch_mat)
+  6564622    7.912    0.000    9.180    0.000 /usr/lib/python3.10/functools.py:393(__get__)
+       58    7.602    0.131 1116.938   19.258 /home/george/Music/SCALE-Sim/scalesim/single_layer_sim.py:186(run)
+ 37369827    7.210    0.000    7.210    0.000 {method 'write' of '_io.TextIOWrapper' objects}
+  7239860    6.855    0.000    6.855    0.000 {built-in method builtins.max}
+ 19693866    6.122    0.000    6.122    0.000 /home/george/.local/lib/python3.10/site-packages/tqdm/utils.py:152(wrapper_setattr)
+  6564622    5.444    0.000    6.994    0.000 /usr/lib/python3.10/_weakrefset.py:53(_commit_removals)
+ 13129244    5.073    0.000    7.478    0.000 /home/george/.local/lib/python3.10/site-packages/tqdm/utils.py:187(disable_on_exception)
+ 13129244    4.847    0.000   16.877    0.000 {method 'remove' of 'set' objects}
+      700    4.697    0.007    4.697    0.007 {method 'close' of '_io.TextIOWrapper' objects}
+ 10708385    4.678    0.000    4.678    0.000 {built-in method numpy.empty}
+  6564622    4.466    0.000   12.501    0.000 /usr/lib/python3.10/_weakrefset.py:27(__exit__)
+ 13129244    4.378    0.000   19.318    0.000 /home/george/.local/lib/python3.10/site-packages/tqdm/std.py:110(__enter__)
+ 13129244    4.211    0.000    6.662    0.000 /home/george/.local/lib/python3.10/site-packages/tqdm/std.py:1153(_comparable)
+ 19693576    4.183    0.000    4.183    0.000 /home/george/.local/lib/python3.10/site-packages/tqdm/std.py:1160(__iter__)
+ 13129244    3.699    0.000   17.275    0.000 /home/george/.local/lib/python3.10/site-packages/tqdm/std.py:113(__exit__)
+  6564622    3.417    0.000   30.485    0.000 /home/george/.local/lib/python3.10/site-packages/tqdm/std.py:682(<setcomp>)
+  6564623    3.366    0.000    8.171    0.000 /usr/lib/python3.10/_weakrefset.py:86(add)
+  6564622    3.343    0.000    4.096    0.000 /usr/lib/python3.10/_weakrefset.py:21(__enter__)
+
+
