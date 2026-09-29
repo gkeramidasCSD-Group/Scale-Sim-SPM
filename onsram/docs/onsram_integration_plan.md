@@ -54,8 +54,10 @@ Paper location: home/Downloads/OnSRAM_ E_icient Inter-Node On-Chip ScratchpadMan
 
 Nothing from `spm_management/`'s documented algorithm is contradicted by the primary text — everything checked out once checked against the right source.
 
+Two small implementation details differ from the paper's text, neither expected to change a decision: `fom.calculate_fom()` divides by `UL + 1` rather than `UL` (the paper's term is undefined when a tensor has no unused liveness), and `pinning.decide_pinning()` does a full sort by FoM rather than the paper's pseudo-sort. The pseudo-sort only compares tensors whose lifetimes overlap, which are the only ones that compete for capacity. A full sort orders every overlapping pair the same way, so it should give the same pinning decisions (FoM ties aside); the pseudo-sort is a speed optimization.
+
 ---
-run_onsram.py now wires OnSRAM's pinning decisions into real SCALE-Sim via COSMA's unmodified baseline.run_cosma_aware(), compared against a plain baseline.run_baseline() pass, replacing OnSRAM's original closed-form latency estimate entirely. Verified on two real models:
+
 ## 5. What Gets Reused From COSMA vs. What's New
 
 COSMA already has a recent precedent for exactly this kind of reuse: the `run_paper_baselines.py` effort (Belady and ILP-greedy replacement policies, neither of them COSMA's own algorithm) already reuses the same generic infrastructure listed below, without ever editing COSMA's own files. We follow the identical pattern.
@@ -86,20 +88,30 @@ self-contained duplicates instead, `onsram_helpers/topology.py` and
 
 A new sibling directory to `cosma/`:
 
+As built (updated 2026-09-28):
+
 ```
 onsram/
 ├── docs/
-│   └── onsram_integration_plan.md      <- this file
+│   ├── onsram_integration_plan.md      <- this file
+│   ├── onsram_problems_and_fixes.md    <- issues found while porting, and their status
+│   ├── onsram_model_roster.md          <- which paper models we can run
+│   └── why_our_speedups_are_lower_than_the_paper.md  <- results vs paper, and why
 ├── onsram_helpers/                     <- OnSRAM-only logic (deliberately NOT
 │   │                                      named "helpers/" — avoids shadowing
 │   │                                      cosma/helpers/ when both are on
 │   │                                      PYTHONPATH at once)
 │   ├── fom.py                          <- Figure-of-Merit scoring
-│   ├── pinning.py                      <- greedy whole-interval pinning
-│   └── scheduling.py                   <- BFS/DFS hybrid sibling scheduling
-├── run_onsram.py                       <- single model + budget (mirrors run_cosma.py)
-└── run_onsram_experiments.py           <- budget/model sweep (mirrors run_experiments.py,
-                                            added once run_onsram.py works)
+│   ├── scheduling.py                   <- BFS/DFS hybrid scheduling + liveness
+│   ├── pinning.py                      <- greedy whole-interval pinning, Overwrite
+│   │                                      Optimization, 'H' hand-off reads
+│   ├── placement.py                    <- SPM address assignment (Best-Fit-Decreasing)
+│   ├── scale_sim_runner.py             <- OnSRAM's own SCALE-Sim driver (baseline + aware)
+│   ├── topology.py                     <- model.json -> SCALE-Sim topology rows
+│   ├── resident_buffers.py             <- SCALE-Sim buffers that model SPM hits
+│   └── visualize.py                    <- SPM-occupancy plots
+├── run_onsram.py                       <- any model(s) x budget(s) (mirrors run_cosma.py)
+└── run_paper_reproduction.py           <- the paper's Fig. 7 experiment on the paper roster
 ```
 
 Superseded by the actual implementation: `run_onsram.py` inserts the repo
@@ -115,8 +127,11 @@ OnSRAM's own logic.
 
 - **Phase A** (this document) — done.
 - **Phase B** — done. `onsram_helpers/fom.py`'s `load_layer_meta()` side-loads `model.json`'s raw layer records (shape/params) that `graph_builder.load_graph()` deliberately drops; everything else reuses COSMA's parsed `nodes`/`tensors` dicts unmodified.
-- **Phase C** — done (`onsram_helpers/fom.py`, `scheduling.py`, `pinning.py`, `run_onsram.py`). Ported `calculate_fom_corrected()` (paper-faithful reuse-factor table), the BFS-DFS hybrid scheduler (independently hand-verified against `cosma/toy_branching_model.json`'s Kahn's-algorithm walk, string tie-break included), and the greedy whole-interval pinning with the Overwrite Optimization. One real empirical finding surfaced during this port, not present in the earlier draft: the reference's own `get_live_timesteps()` has an exclusive-end range bug that undercounts a tensor's true footprint at its last-use timestep — this is *load-bearing* for the reference's own reported MobileNet@2MB numbers (29-30/31 pinned, 1.53MB peak, §4's 2.03×), which are not physically realizable under a real byte-addressed allocator (confirmed via `cosma/helpers/spm_allocator.py`: two 1.53MB tensors the reference's decision thinks don't overlap actually must coexist at their producer/consumer hand-off, exceeding the 2MB budget). This port uses the paper's own inclusive-lifetime semantics (§4.2) instead, with a narrow, explicit exception so the Overwrite Optimization still functions within COSMA's address model (which has no true buffer-aliasing concept): a reclaim-source tensor vacates one timestep early rather than sharing an address with its replacement. Result: 27/30 tensors pinned on MobileNet@2MB (not 29/30) — lower, but physically valid, independently re-verified by a live `SpmAllocator` replay. See `onsram_helpers/pinning.py`'s module docstring for the full empirical trace.
-- **Phase D** — done (`run_onsram_scale_sim()` in `run_onsram.py`). Drives OnSRAM's `resident_action`/`spm_plan`/`schedule` through COSMA's unmodified `baseline.run_cosma_aware()`, compared against a plain `baseline.run_baseline()` pass on the same model — OnSRAM's original closed-form latency estimator is now fully replaced by real, engine-measured cycle counts and DRAM byte traffic. The accounting is a simplified duplicate of `run_cosma.py`'s own idealized-vs-real block (COSMA's spill/retrieve terms drop out entirely, since OnSRAM never spills or retrieves — see §2), reporting DRAM traffic reduction split into ifmap residency credit (from pinning) vs. ofmap residency credit (Eq.3's unconditional on-chip-at-creation assumption, not specific to OnSRAM's choices) so the two aren't conflated. Confirmed on MobileNet@2MB: **71.24% DRAM traffic reduction, 1.024× speedup** versus the no-management baseline, both numbers from real SCALE-Sim simulation, not estimated. Real SCALE-Sim is genuinely slow (~3 minutes for MobileNet's 30 layers, two full passes) — a heartbeat (duplicated from `cosma/run_experiments.py`'s own) prints progress every 20s during it; `--no-scale-sim` skips straight to Phase C's fast decision-only pass.
-- **Phase E** — `run_onsram.py` already covers this (`--model`/`--spm-mb` sweeps, `--out-csv`, per-combination logs, `--plot`) — a separate `run_onsram_experiments.py` isn't needed as its own file.
-- **Phase F** — validation: sanity-check against `spm_management/output.txt`'s own reported 2.03× (MobileNetV1) and `onsram_bw/OnSRAM_Results.md`'s per-model paper-reference table, and against the real paper's own 1.02–4.8× range from §4. Expect *different* absolute numbers once real SCALE-Sim replaces the analytical model — the target is matching the qualitative pattern, not exact byte-for-byte numbers, same standard COSMA's own paper comparison already holds itself to.
-- **Phase G** (later, explicitly out of scope for this first pass) — the weight/activation SPM-congestion breakdown + chart, and the fused/unfused bandwidth sensitivity study from `onsram_bw/`.
+- **Phase C** — done (`onsram_helpers/fom.py`, `scheduling.py`, `pinning.py`, `run_onsram.py`). Ported `calculate_fom_corrected()` (paper-faithful reuse-factor table), the BFS-DFS hybrid scheduler (independently hand-verified against `cosma/toy_branching_model.json`'s Kahn's-algorithm walk, string tie-break included), and the greedy whole-interval pinning with the Overwrite Optimization. One real empirical finding surfaced during this port, not present in the earlier draft: the reference's own `get_live_timesteps()` has an exclusive-end range bug that undercounts a tensor's true footprint at its last-use timestep — this is *load-bearing* for the reference's own reported MobileNet@2MB numbers (29-30/31 pinned, 1.53MB peak, §4's 2.03×), which are not physically realizable under a real byte-addressed allocator (confirmed via `cosma/helpers/spm_allocator.py`: two 1.53MB tensors the reference's decision thinks don't overlap actually must coexist at their producer/consumer hand-off, exceeding the 2MB budget). This port uses the paper's own inclusive-lifetime semantics (§4.2) instead, with a narrow, explicit exception so the Overwrite Optimization still functions within COSMA's address model (which has no true buffer-aliasing concept): a reclaim-source tensor vacates one timestep early rather than sharing an address with its replacement. Result: 27/30 tensors pinned on MobileNet@2MB (not 29/30) — lower, but physically valid, independently re-verified by a live `SpmAllocator` replay. See `onsram_helpers/pinning.py`'s module docstring for the full empirical trace. (Those counts are at float32 tensor sizes. Since 2026-09-25 OnSRAM sizes tensors at the paper's FP16, and MobileNet@2MB pins 29/30, still physically valid.)
+- **Phase D** — done (`run_onsram_scale_sim()` in `run_onsram.py`). Drives OnSRAM's `resident_action`/`spm_plan`/`schedule` through real SCALE-Sim, compared against a plain no-management pass on the same model, replacing OnSRAM's original closed-form latency estimator. It first went through COSMA's `baseline.run_cosma_aware()`; OnSRAM now has its own duplicate, `onsram_helpers/scale_sim_runner.py`, so a change on either side can't move the other's numbers. OnSRAM never spills or retrieves (see §2), so the accounting is just residency credit: ifmap reads served from the SPM (`'P'` and `'H'`) and pinned outputs not written back.
+
+  The first measurement (MobileNet@2MB: 71.24% DRAM traffic reduction, 1.024× speedup) is superseded. It used float32 sizes, SCALE-Sim's own DRAM access counts, a free write for *every* output, and hand-off reads from DRAM. OnSRAM now follows the paper's §6 accounting instead: FP16, each element fetched once, stall-free compute, per-layer `max(compute, transfer)`, and only pinned outputs stay on-chip. That history and the current numbers are in `why_our_speedups_are_lower_than_the_paper.md`. Real SCALE-Sim is slow (a few minutes per model at the paper config); a heartbeat prints every 20s, and `--no-scale-sim` gives Phase C's fast decision-only pass.
+- **Phase E** — done. `run_onsram.py` covers general sweeps (`--model`/`--spm-mb`, `--out-csv`, per-combination logs, `--plot`), and `run_paper_reproduction.py` runs the paper's own experiment on the paper roster (fused and unfused exports, paper config, paper reference values in its summary).
+- **Phase F** — done, 2026-09-26, re-run 2026-09-28 with logs under `onsram/logs/`. Compared per model against the paper's Fig. 7 OnSRAM-Static bars and Table 1's ∞-SPM row on 7 of the 12 models (`onsram_model_roster.md`). The per-model table, and why some models land far from the paper, are in `why_our_speedups_are_lower_than_the_paper.md`.
+- **Phase G** — not started: the weight/activation SPM-congestion breakdown + chart, and the bandwidth sensitivity study from `onsram_bw/`. (Its fused/unfused part is covered: `spm_common/unfuse_model.py` builds unfused graphs and every paper model is run both ways.)
+- **Not planned yet**: OnSRAM-Eager (the paper's second variant, for graph-less eager execution), the paper's energy results (§7.1.4), and the 5 paper models we can't run (VGG-16 on memory; Inception-v4, SSD300, PTB-LSTM, Multi-Head Attention, see `onsram_model_roster.md`).

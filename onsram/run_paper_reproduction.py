@@ -26,12 +26,14 @@ against the primary PDF (~/Downloads/OnSRAM_...pdf), Abstract and Section 6
     ResNet-50, SSD300, ResNeXt, MobileNetV1, SqueezeNet, PTB-LSTM (an LSTM
     language model), Multi-Head Attention (a transformer).
   - Headline (Fig. 7): OnSRAM-Static achieves 1.02-4.8x speedup vs "No SPM
-    Mgmt" across those 12 models. The GeoMean bar and most per-model bars
-    have no printed numeric label in the figure -- only two Infinite-SPM
-    peaks are annotated (3.86/3.81 for the ResNeXt cluster, 5.17/4.76 for
-    MobileNetV1/SqueezeNet's cluster). This script therefore prints OUR
-    measured per-model numbers next to that textual 1.02-4.8x range, never
-    a fabricated per-model paper ground truth we don't actually have.
+    Mgmt" across those 12 models. Fig. 7 prints a number on only two
+    OnSRAM-Static bars (ResNeXt 3.81, MobileNetV1 4.76); the others in
+    PAPER_FIG7_STATIC below were read off the figure (page 15 at 300 dpi,
+    bars found by legend colour, heights calibrated on the 0/1/2/3
+    gridlines; the chart's own inf-SPM bars read within 0.01-0.02 of
+    Table 1's printed values, so expect about +-0.02). Table 1's inf-SPM
+    row (PAPER_TABLE1_INF_SPM) is printed text, checked against the PDF.
+    See onsram/docs/why_our_speedups_are_lower_than_the_paper.md.
   - Sec 7.1: "For sequential DNNs like AlexNet, VGG, and PTB, there is very
     little gap to be bridged between No SPM Mgmt and Infinite SPM" -- i.e.
     VGG16 is explicitly expected to show only a small speedup, not a
@@ -44,11 +46,11 @@ What this reproduction can and can't match:
   - A DISCLOSED, already-considered choice, not derived fresh by this
     script: configs/scale_onsram.cfg (pre-existing in this repo, run_name
     'onsram_paper_hw') is used as the default --config. The paper's own
-    performance model (Sec 6) is a closed-form roofline bound --
-    max(compute_time, data_xfer_time), with compute_time = FLOPs / 3e12
-    directly -- it never simulates a concrete systolic array shape or
-    clock at all, so there is no array shape to literally "match". That
-    config resolves this the only reasonable way available: 39x39 PEs at
+    performance model (Sec 6) is bandwidth-centric --
+    max(compute_time, data_xfer_time) per node, from Venkataramani et al.
+    [93], calibrated to within 1% of chip measurements [10]. The paper
+    gives neither compute_time's formula nor an array shape to literally
+    "match". That config resolves this the only reasonable way available: 39x39 PEs at
     an implicit 1GHz clock, 2 FLOPs/MAC -> 2*39*39*1e9 = 3.042 TFLOP/s,
     matching the paper's 3 TFLOP figure to within 1.4%; the 32/384 GBps
     figures map onto that same 1GHz assumption as 32/384 bytes per cycle
@@ -57,32 +59,38 @@ What this reproduction can and can't match:
     corresponding knob in this pipeline, since a resident SPM hit is
     modeled as a flat, bandwidth-independent hit_latency cost, not a
     bandwidth-limited transfer -- see onsram_helpers/resident_buffers.py).
-    Because SCALE-Sim genuinely simulates array fill/drain/dataflow reuse
-    and the paper's own model doesn't, expect the same QUALITATIVE pattern
+    Because SCALE-Sim's array timing differs from the paper's calibrated
+    model, expect the same QUALITATIVE pattern
     (memory-bound mobile networks benefit most; AlexNet/VGG/PTB see little
     gap), not byte-identical numbers -- the same standard this project's
     COSMA paper comparison already holds itself to (see
     onsram/docs/onsram_integration_plan.md Phase F).
-  - NOT reproduced: 7 of the paper's 12 models have no model.json export
-    in this repo (AlexNet, GoogLeNet, Inception-v4, SSD300, ResNeXt,
-    PTB-LSTM, Multi-Head Attention) -- the last three in particular aren't
-    even image classifiers (object detection / LSTM / transformer
-    attention), a different op mix than this pipeline's conv-focused
-    tensor tracking is built for. PAPER_MODELS below lists the 5 that DO
-    have a real export: VGG16, ResNet-50, Inception-v3, MobileNetV1,
-    SqueezeNet.
+  - Fused vs unfused graphs (--variant): our TFLite exports have
+    BatchNorm/ReLU folded into the convs. The paper's main results use
+    TensorFlow graphs with BatchNorm/BiasAdd/ReLU as separate nodes (its
+    one layer-fusion experiment, Sec 7.1.6, reports only a range,
+    1.01-2.17x, avg 1.31x). '<model>_unfused' exports from
+    spm_common/unfuse_model.py rebuild those nodes, so the unfused rows
+    are the ones to compare against Fig. 7 / Table 1. Both run by default.
+  - Our inf-SPM ceiling (inf_spm_speedup): the same baseline with every
+    activation on-chip and weights still fetched once -- Table 1's inf-SPM
+    experiment on our simulator. Computed from the baseline pass, no extra
+    simulation.
+  - NOT reproduced: 4 of the paper's 12 models have no model.json export
+    (Inception-v4, SSD300, PTB-LSTM, Multi-Head Attention); the last two
+    need topology rows for recurrent/attention layers, not just an export.
+    VGG16 is exported but runs out of memory in SCALE-Sim on this machine
+    (7 GB RAM), so it only runs when named explicitly (--model VGG16).
+    MobileNetV2 isn't in the paper; it's run as an extra data point.
 
-Real SCALE-Sim is genuinely slow, same caveat as run_onsram.py's own
-module docstring -- and this config's 39x39 array plus Inception-v3's 129
-conv-like layers is untested territory as of this writing (this port's own
-15-minute-plus-per-budget experience this session was at a 16x16 array on
-much smaller models). Calibrate on one small model first
-(--model squeezenet, or --no-scale-sim for a decision-only sanity pass)
-before launching the full 5-model sweep.
+Real SCALE-Sim is slow and memory-hungry: run one model at a time (never
+several processes at once -- they'd also overwrite each other's
+onsram/topology.csv). --no-scale-sim gives a fast decision-only pass.
 """
 import argparse
 import contextlib
 import csv
+import math
 import os
 import sys
 import threading
@@ -108,13 +116,16 @@ DEFAULT_LOGS_DIR = os.path.join(_ONSRAM_DIR, 'logs')
 DEFAULT_RESULTS_DIR = os.path.join(_ONSRAM_DIR, 'results')
 
 # repo model arg (resolves under cosma/_exported/<name>/model.json) -> the
-# paper's own name for that network, in the order Fig. 7 lists them.
+# paper's own name for that network, in the order Fig. 7 lists them. The
+# unfused variant of each is '<model arg>_unfused' (see module docstring).
 PAPER_MODELS = {
+    'AlexNet': 'AlexNet',
     'VGG16': 'VGG16',
-    'ResNeT50': 'ResNet-50',
+    'GoogLeNet': 'GoogLeNet',
     '_exported_inception_v3-tflite-float': 'Inception-v3',
+    'ResNeT50': 'ResNet-50',
+    'ResNeXt50': 'ResNeXt',
     'MobileNet': 'MobileNetV1',
-    'MobileNetV2': 'MobileNetV2',
     # NOT 'squeezenet' -- cosma/_exported/squeezenet/model.json is corrupt
     # (all 40 layers mislabeled 'ADD', zero real convolutions; confirmed
     # its own raw source .tflite is itself degenerate -- re-exporting it
@@ -125,12 +136,31 @@ PAPER_MODELS = {
     # branches, MAXPOOL x3; 4.94MB of params, matching SqueezeNet1.1's
     # known ~1.24M-parameter size almost exactly).
     'squeezenet1_1': 'SqueezeNet',
+    'MobileNetV2': 'MobileNetV2',  # not in the paper
+}
+
+# Only run when named with --model: VGG16 runs out of memory in SCALE-Sim
+# on this machine and can take the whole desktop down with it.
+OPT_IN_MODELS = ('VGG16',)
+
+VARIANTS = {'fused': '', 'unfused': '_unfused'}
+
+# Paper's OnSRAM-Static speedup per model, Fig. 7 (ResNeXt/MobileNetV1
+# printed; the rest read off the figure, about +-0.02 -- see module
+# docstring). Geomean over all 12 models: 1.59.
+PAPER_FIG7_STATIC = {
+    'AlexNet': 1.02, 'VGG16': 1.02, 'GoogLeNet': 1.83, 'Inception-v3': 1.29,
+    'ResNet-50': 1.49, 'ResNeXt': 3.81, 'MobileNetV1': 4.76, 'SqueezeNet': 2.20,
+}
+
+# Paper's Table 1, inf-SPM row (printed values).
+PAPER_TABLE1_INF_SPM = {
+    'AlexNet': 1.04, 'VGG16': 1.19, 'GoogLeNet': 1.94, 'Inception-v3': 1.64,
+    'ResNet-50': 1.75, 'ResNeXt': 3.86, 'MobileNetV1': 5.17, 'SqueezeNet': 2.84,
 }
 
 # Sec 7.1 / Fig. 7's own stated range for OnSRAM-Static vs No SPM Mgmt,
-# printed as context -- never compared row-by-row against a specific
-# model, since the paper doesn't publish per-model numeric labels (see
-# module docstring).
+# across all 12 models.
 PAPER_SPEEDUP_RANGE = (1.02, 4.8)
 
 def _default_bandwidth_words_per_cycle(config_path: str) -> float:
@@ -162,6 +192,17 @@ def _start_heartbeat(label: str) -> threading.Event:
 
     threading.Thread(target=_beat, daemon=True).start()
     return stop
+
+
+def _inf_spm_cycles(schedule, layer_stats: dict, bandwidth_bytes_per_cycle: float) -> float:
+    """
+    Table 1's inf-SPM experiment on our simulator: the baseline with every
+    activation read/write removed, weights still fetched once. Same
+    per-layer max(compute, transfer) as run_onsram_scale_sim().
+    """
+    return sum(max(layer_stats[lid]['compute_cycles'],
+                   layer_stats[lid]['filter_dram_bytes'] / bandwidth_bytes_per_cycle)
+               for _, lid in schedule)
 
 
 def _run_one(model_arg: str, paper_name: str, model_json_path: str, config_path: str,
@@ -203,6 +244,13 @@ def _run_one(model_arg: str, paper_name: str, model_json_path: str, config_path:
                 finally:
                     heartbeat_stop.set()
                 print_dram_savings(scale_sim_result)
+                inf_spm_cycles = _inf_spm_cycles(result['schedule'], layer_stats,
+                                                 bandwidth_bytes_per_cycle)
+                scale_sim_result['inf_spm_speedup'] = (
+                    scale_sim_result['baseline_total_cycles'] / inf_spm_cycles
+                    if inf_spm_cycles > 0 else float('inf'))
+                print(f"  inf-SPM ceiling (every activation on-chip, weights once): "
+                      f"{inf_spm_cycles:,.0f} cycles, {scale_sim_result['inf_spm_speedup']:.4f}x")
                 stats = {**stats, **scale_sim_result}
         return {'status': 'OK', **stats}
     except Exception as e:  # noqa: BLE001 -- one bad model shouldn't abort the sweep
@@ -216,73 +264,130 @@ def _run_one(model_arg: str, paper_name: str, model_json_path: str, config_path:
 
 def run_paper_reproduction(models: dict = None, spm_mb_list=None, config_path: str = DEFAULT_CONFIG,
                             run_scale_sim: bool = True, logs_dir=DEFAULT_LOGS_DIR,
+                            variants=tuple(VARIANTS), on_row=None,
                             verbose: bool = True) -> list:
     """
-    Runs every (model, budget) combination in `models` x `spm_mb_list`
-    through OnSRAM-Static + (unless run_scale_sim is False) real SCALE-Sim,
-    using configs/scale_onsram.cfg's paper-matched hardware by default.
-    Returns a list of flat row dicts, one per combination, in the same
-    shape written to --out-csv.
+    Runs every (model, variant, budget) combination in `models` x
+    `variants` x `spm_mb_list` through OnSRAM-Static + (unless
+    run_scale_sim is False) real SCALE-Sim, using configs/scale_onsram.cfg's
+    paper-matched hardware by default. Returns a list of flat row dicts,
+    one per combination, in the same shape written to --out-csv.
+    on_row(rows), if given, is called after every combination (so a sweep
+    that dies partway still leaves the finished rows on disk).
     """
-    models = models or PAPER_MODELS
+    models = models or {m: n for m, n in PAPER_MODELS.items() if m not in OPT_IN_MODELS}
     spm_mb_list = spm_mb_list or [DEFAULT_SPM_MB]
     if logs_dir:
         os.makedirs(logs_dir, exist_ok=True)
 
     rows = []
-    for model_arg, paper_name in models.items():
-        try:
-            model_json_path = resolve_model_arg(model_arg)
-        except Exception as e:  # noqa: BLE001
-            print(f"  FAILED to resolve model={model_arg}: {type(e).__name__}: {e}", flush=True)
-            rows.extend({'model': model_arg, 'paper_name': paper_name, 'spm_mb': mb,
-                         'status': 'ERROR', 'error': f"{type(e).__name__}: {e}"}
-                        for mb in spm_mb_list)
-            continue
+    for base_arg, paper_name in models.items():
+        for variant in variants:
+            model_arg = base_arg + VARIANTS[variant]
+            ref = {'model': model_arg, 'paper_name': paper_name, 'variant': variant,
+                   'paper_fig7_static': PAPER_FIG7_STATIC.get(paper_name, ''),
+                   'paper_table1_inf_spm': PAPER_TABLE1_INF_SPM.get(paper_name, '')}
+            try:
+                model_json_path = resolve_model_arg(model_arg)
+            except Exception as e:  # noqa: BLE001
+                print(f"  FAILED to resolve model={model_arg}: {type(e).__name__}: {e}", flush=True)
+                rows.extend({**ref, 'spm_mb': mb, 'status': 'ERROR',
+                             'error': f"{type(e).__name__}: {e}"} for mb in spm_mb_list)
+                if on_row:
+                    on_row(rows)
+                continue
 
-        for spm_mb in spm_mb_list:
-            memory_budget_bytes = int(spm_mb * 1024 * 1024)
-            if verbose:
-                print(f"Running: paper_model={paper_name} ({model_arg}) "
-                      f"spm={spm_mb:g}MB ...", file=sys.stderr, flush=True)
-            stats = _run_one(model_arg, paper_name, model_json_path, config_path,
-                              memory_budget_bytes, logs_dir, run_scale_sim)
-            row = {'model': model_arg, 'paper_name': paper_name, 'spm_mb': spm_mb, **stats}
-            rows.append(row)
-            if stats['status'] == 'OK':
-                dram_note = (f", DRAM -{stats['dram_traffic_reduction_pct']:.1f}%, "
-                              f"speedup {stats['speedup']:.3f}x"
-                              if 'dram_traffic_reduction_pct' in stats else "")
-                print(f"  {paper_name}: {stats['pinned_count']}/{stats['total_tensors']} pinned, "
-                      f"peak {stats['peak_bytes'] / 1024 / 1024:.4f} MB / {spm_mb:g} MB{dram_note}",
-                      flush=True)
-            else:
-                print(f"  {paper_name}: FAILED: {stats['error']}", flush=True)
+            for spm_mb in spm_mb_list:
+                memory_budget_bytes = int(spm_mb * 1024 * 1024)
+                if verbose:
+                    print(f"Running: paper_model={paper_name} ({model_arg}) "
+                          f"spm={spm_mb:g}MB ...", file=sys.stderr, flush=True)
+                started = time.monotonic()
+                stats = _run_one(model_arg, paper_name, model_json_path, config_path,
+                                  memory_budget_bytes, logs_dir, run_scale_sim)
+                row = {**ref, 'spm_mb': spm_mb, **stats,
+                       'wall_seconds': round(time.monotonic() - started)}
+                rows.append(row)
+                if on_row:
+                    on_row(rows)
+                if stats['status'] == 'OK':
+                    dram_note = (f", DRAM -{stats['dram_traffic_reduction_pct']:.1f}%, "
+                                  f"speedup {stats['speedup']:.3f}x "
+                                  f"(inf-SPM ceiling {stats['inf_spm_speedup']:.3f}x)"
+                                  if 'dram_traffic_reduction_pct' in stats else "")
+                    print(f"  {paper_name} [{variant}]: {stats['pinned_count']}/"
+                          f"{stats['total_tensors']} pinned, peak "
+                          f"{stats['peak_bytes'] / 1024 / 1024:.4f} MB / {spm_mb:g} MB{dram_note}"
+                          f"  [{row['wall_seconds']}s]", flush=True)
+                else:
+                    print(f"  {paper_name} [{variant}]: FAILED: {stats['error']}", flush=True)
 
     return rows
+
+
+def _geomean(values: list) -> float:
+    return math.exp(sum(math.log(v) for v in values) / len(values))
 
 
 def print_summary(rows: list) -> None:
     lo, hi = PAPER_SPEEDUP_RANGE
     print(f"\n--- OnSRAM paper's own reported range (Fig. 7, OnSRAM-Static vs No SPM Mgmt): "
           f"{lo}-{hi}x, across the paper's full 12-model suite ---")
-    print(f"--- Our measured speedup, {len(set(r['model'] for r in rows))} of the paper's 12 models "
-          f"(the ones with a real model.json export in this repo) ---\n")
-    cols = ['paper_name', 'model', 'spm_mb', 'status', 'pinned', 'total_tensors',
-            'dram_reduction_pct', 'speedup', 'error']
-    print_rows = [{
-        'paper_name': r['paper_name'], 'model': r['model'], 'spm_mb': r['spm_mb'],
-        'status': r['status'],
-        'pinned': r.get('pinned_count', ''), 'total_tensors': r.get('total_tensors', ''),
-        'dram_reduction_pct': round(r['dram_traffic_reduction_pct'], 2) if 'dram_traffic_reduction_pct' in r else '',
-        'speedup': round(r['speedup'], 4) if 'speedup' in r else '',
-        'error': r.get('error', ''),
-    } for r in rows]
+    print("--- paper_static: Fig. 7 OnSRAM-Static (mostly read off the figure, +-0.02); "
+          "paper_inf: Table 1 inf SPM; our_inf: our inf-SPM ceiling ---\n")
+    fmt = lambda r, k: round(r[k], 2) if isinstance(r.get(k), float) else r.get(k, '')
+    cols = ['paper_name', 'variant', 'spm_mb', 'status', 'pinned', 'dram_red_pct', 'speedup',
+            'our_inf', 'pct_of_our_inf', 'paper_static', 'vs_paper', 'paper_inf', 'error']
+    print_rows = []
+    for r in rows:
+        ok = 'speedup' in r
+        paper = r.get('paper_fig7_static')
+        print_rows.append({
+            'paper_name': r['paper_name'], 'variant': r['variant'], 'spm_mb': r['spm_mb'],
+            'status': r['status'],
+            'pinned': f"{r['pinned_count']}/{r['total_tensors']}" if 'pinned_count' in r else '',
+            'dram_red_pct': round(r['dram_traffic_reduction_pct'], 1) if ok else '',
+            'speedup': fmt(r, 'speedup'), 'our_inf': fmt(r, 'inf_spm_speedup'),
+            'pct_of_our_inf': (f"{100 * r['speedup'] / r['inf_spm_speedup']:.0f}%" if ok else ''),
+            'paper_static': paper or '',
+            'vs_paper': f"{100 * (r['speedup'] / paper - 1):+.0f}%" if ok and paper else '',
+            'paper_inf': r.get('paper_table1_inf_spm') or '',
+            'error': r.get('error', ''),
+        })
     widths = {c: max(len(c), *(len(str(row[c])) for row in print_rows)) for c in cols}
     print('  '.join(c.ljust(widths[c]) for c in cols))
     print('  '.join('-' * widths[c] for c in cols))
     for row in print_rows:
         print('  '.join(str(row[c]).ljust(widths[c]) for c in cols))
+
+    # Geomean over the paper models that ran OK, per variant and budget,
+    # next to the paper's geomean over the same models.
+    for variant in VARIANTS:
+        for spm_mb in sorted({r['spm_mb'] for r in rows}):
+            both = [(r['speedup'], r['paper_fig7_static']) for r in rows
+                    if r['variant'] == variant and r['spm_mb'] == spm_mb
+                    and 'speedup' in r and r.get('paper_fig7_static')]
+            if both:
+                ours, paper = _geomean([o for o, _ in both]), _geomean([p for _, p in both])
+                print(f"\ngeomean [{variant}, {spm_mb:g} MB] over {len(both)} paper models: "
+                      f"ours {ours:.2f}x vs paper {paper:.2f}x ({100 * (ours / paper - 1):+.0f}%)")
+
+
+CSV_FIELDS = ['paper_name', 'model', 'variant', 'spm_mb', 'status', 'pinned_count',
+              'total_tensors', 'peak_bytes', 'oversized_count', 'baseline_total_cycles',
+              'onsram_total_cycles', 'baseline_dram_bytes', 'onsram_dram_bytes',
+              'dram_traffic_reduction_pct', 'speedup', 'inf_spm_speedup',
+              'paper_fig7_static', 'paper_table1_inf_spm', 'wall_seconds', 'error']
+
+
+def write_csv(path: str, rows: list) -> None:
+    out_dir = os.path.dirname(path)
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
+    with open(path, 'w', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=CSV_FIELDS, extrasaction='ignore')
+        writer.writeheader()
+        writer.writerows(rows)
 
 
 if __name__ == '__main__':
@@ -290,7 +395,11 @@ if __name__ == '__main__':
                                       formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--model', action='append', dest='models', default=None,
                          help="Restrict to one paper model (repeatable), by its repo model arg "
-                              f"(one of {list(PAPER_MODELS)}). Defaults to all 5.")
+                              f"(one of {list(PAPER_MODELS)}). Defaults to all of them except "
+                              f"{list(OPT_IN_MODELS)}, which run only when named here.")
+    parser.add_argument('--variant', choices=[*VARIANTS, 'both'], default='both',
+                         help="fused (the TFLite export as-is), unfused (BatchNorm/BiasAdd/ReLU "
+                              "as separate nodes, like the paper's graphs), or both (default).")
     parser.add_argument('--spm-mb', type=float, nargs='+', default=[DEFAULT_SPM_MB],
                          help=f"SPM budget(s) in MB (default: the paper's own {DEFAULT_SPM_MB} MB).")
     parser.add_argument('--config', default=DEFAULT_CONFIG,
@@ -300,29 +409,22 @@ if __name__ == '__main__':
                          help="Skip the real SCALE-Sim passes -- fast decision-only sanity check "
                               "(pinning %%, physical validity), no DRAM/speedup numbers.")
     parser.add_argument('--logs-dir', default=DEFAULT_LOGS_DIR)
-    parser.add_argument('--out-csv', default=os.path.join(DEFAULT_RESULTS_DIR, 'paper_reproduction.csv'))
+    parser.add_argument('--out-csv', default=os.path.join(DEFAULT_RESULTS_DIR, 'paper_reproduction.csv'),
+                         help="Summary CSV, rewritten after every combination.")
     args = parser.parse_args()
 
     if not os.path.isfile(args.config):
         sys.exit(f"error: --config file not found: {args.config}")
 
-    selected = ({m: PAPER_MODELS[m] for m in args.models} if args.models else PAPER_MODELS)
     unknown = [m for m in (args.models or []) if m not in PAPER_MODELS]
     if unknown:
         sys.exit(f"error: unknown --model {unknown}, must be one of {list(PAPER_MODELS)}")
+    selected = {m: PAPER_MODELS[m] for m in args.models} if args.models else None
+    variants = tuple(VARIANTS) if args.variant == 'both' else (args.variant,)
 
     rows = run_paper_reproduction(
         models=selected, spm_mb_list=args.spm_mb, config_path=args.config,
-        run_scale_sim=not args.no_scale_sim, logs_dir=args.logs_dir, verbose=True)
+        run_scale_sim=not args.no_scale_sim, logs_dir=args.logs_dir, variants=variants,
+        on_row=lambda rows: write_csv(args.out_csv, rows), verbose=True)
     print_summary(rows)
-
-    out_dir = os.path.dirname(args.out_csv)
-    if out_dir:
-        os.makedirs(out_dir, exist_ok=True)
-    fieldnames = ['paper_name', 'model', 'spm_mb', 'status', 'pinned_count', 'total_tensors',
-                  'peak_bytes', 'oversized_count', 'dram_traffic_reduction_pct', 'speedup', 'error']
-    with open(args.out_csv, 'w', newline='') as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction='ignore')
-        writer.writeheader()
-        writer.writerows(rows)
     print(f"\nWrote {len(rows)} rows to {args.out_csv}")

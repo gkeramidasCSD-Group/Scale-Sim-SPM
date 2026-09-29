@@ -1,8 +1,9 @@
 # onsram/onsram_helpers/scale_sim_runner.py
 """
 Drives SCALE-Sim in-process (no subprocess, no intermediate CSV round-trip)
-to get per-layer compute cycles and compulsory DRAM bytes for every layer
-in model.json -- a self-contained duplicate of cosma/helpers/baseline.py's
+to get compute cycles for every conv layer, and computes each layer's DRAM
+bytes from its real tensor sizes (the paper's Sec. 6 fetch-once
+accounting, see _simulate_layer()) -- a self-contained duplicate of cosma/helpers/baseline.py's
 run_baseline()/run_cosma_aware(), NOT an import of them. COSMA and OnSRAM
 are two separate jobs that happen to sit on the same SCALE-Sim engine; a
 future change to COSMA's own baseline.py (or its own topology_builder.py /
@@ -17,9 +18,8 @@ since it has no paper-specific logic at all) are shared; the actual
 layer-simulation orchestration below is OnSRAM's own copy.
 
 Only CONV2D/DEPTHWISE_CONV2D layers are actually simulated by SCALE-Sim
-(see onsram_helpers/topology.py) -- every other model.json layer id (ADD,
-DENSE, REDUCE_MEAN, ...) gets compute_cycles=0, compulsory_dram_bytes=0,
-since SCALE-Sim's systolic array model doesn't cover them.
+(see onsram_helpers/topology.py). Every other model.json layer (ADD,
+CONCAT, pooling, DENSE, ...) is costed by _nonconv_layer_stats().
 
 Each layer's ifmap/ofmap/filter SCALE-Sim SRAM buffers are sized to the
 *real* tensor/weight byte sizes from model.json (via single_layer_sim.
@@ -35,13 +35,10 @@ Two entry points:
   - run_onsram_aware(): the same simulation, but driven by OnSRAM's own
     plan's resident_action (from onsram_helpers.pinning.build_resident_action())
     via OnsramResidentReadBuffer/OnsramResidentWriteBuffer
-    (onsram_helpers/resident_buffers.py) -- a tensor OnSRAM's greedy
-    pinning decision says is already resident is genuinely simulated as a
-    zero-cost SRAM hit, and a layer's own freshly-created output is
-    genuinely simulated as staying on-chip, never drained to DRAM. Every
-    genuine fetch/write still runs through SCALE-Sim's exact unmodified
-    logic; only the specific case OnSRAM's decision has already resolved
-    is short-circuited.
+    (onsram_helpers/resident_buffers.py) -- an input that's resident
+    ('P') or read at a hand-off ('H') costs no DRAM traffic, and a pinned
+    output ('C') is never written back. The resident buffer classes are
+    still installed in SCALE-Sim, but only its compute cycles are used.
 """
 import json
 import math
@@ -562,8 +559,9 @@ def run_baseline(model_json_path: str, config_path: str,
     """
     Returns layer_stats: model.json layer id -> {compute_cycles,
     ifmap_dram_bytes, filter_dram_bytes, ofmap_dram_bytes} for every layer
-    in model.json (conv-like layers get real SCALE-Sim numbers, everything
-    else gets zeros). This is the plain, OnSRAM-unaware simulation -- every
+    in model.json (conv-like layers: SCALE-Sim compute cycles plus
+    fetch-once traffic; everything else: _nonconv_layer_stats()). This is
+    the plain, OnSRAM-unaware simulation -- every
     layer independently, no cross-layer memory sharing at all (SCALE-Sim's
     ordinary behavior). Does not depend on any SPM budget.
     """

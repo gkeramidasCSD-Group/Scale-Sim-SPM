@@ -2,6 +2,8 @@
 
 This documents real issues discovered while porting OnSRAM-Static's algorithm (FoM scoring, greedy whole-interval pinning with the Overwrite Optimization, BFS-DFS scheduling) into a real, byte-addressed, cycle-accurate simulation pipeline. Each one surfaced only once the algorithm was driven by an actual physical-consistency checker and a real simulator — none of them are visible from the paper's own description or its own bandwidth-based evaluation methodology (§6), which never modeled real SPM addresses at all.
 
+> **Numbers below are as measured when each problem was found**, under the accounting of the time: float32 (4-byte) tensor sizes and SCALE-Sim's own DRAM access counts. OnSRAM has since moved to the paper's accounting (FP16, each element fetched once, stall-free compute; see `why_our_speedups_are_lower_than_the_paper.md`), so today's pin counts and speedups differ. Each problem's **Status** line says what still applies (updated 2026-09-28).
+
 ---
 
 ## Problem 1: The reference implementation's live-range calculation undercounts a tensor's true footprint
@@ -12,6 +14,8 @@ This documents real issues discovered while porting OnSRAM-Static's algorithm (F
 
 **Fix.** Use the inclusive range everywhere by default. This drops the achievable pin ratio on the same test case from the reference's reported 29–30/31 to a physically valid 27/30 — lower, but actually realizable (independently re-verified via a live byte-addressed allocator replay).
 
+**Status.** Fixed, still in place. At today's FP16 tensor sizes the same MobileNet@2MB case pins 29/30 with the inclusive range (the 1.53MB tensors above are now 0.77MB), still independently replayed with no violations.
+
 ---
 
 ## Problem 2: Fixing Problem 1 breaks the Overwrite Optimization entirely
@@ -20,7 +24,11 @@ This documents real issues discovered while porting OnSRAM-Static's algorithm (F
 
 **Root cause.** The Overwrite Optimization's entire value proposition is that two tensors can share one physical address across the instant one dies and the other is born. A real byte-addressed allocator has no representation for two different tensor IDs occupying the same address at the same timestep — the only way to express the handoff is for the dying tensor to vacate its space *before* the new tensor claims it, i.e. exactly the exclusive-range behavior — but only for tensors genuinely involved in a reclaim, never as a blanket rule.
 
-**Fix.** A two-part rule: inclusive range by default (Problem 1's fix stays in place for every tensor), with one explicit, narrow exception — a tensor that the Overwrite Optimization actually used as a reclaim source for another tensor's fit vacates one timestep early. This restores the Overwrite Optimization as a real, working mechanism. Disclosed cost: that one tensor's very last real read gets modeled as a DRAM fetch instead of an SPM hit once wired into real simulation, since true address-aliasing isn't representable — a conservative simplification, not a correctness bug.
+**Fix.** A two-part rule: inclusive range by default (Problem 1's fix stays in place for every tensor), with one explicit, narrow exception — a tensor that the Overwrite Optimization actually used as a reclaim source for another tensor's fit vacates one timestep early. This restores the Overwrite Optimization as a real, working mechanism.
+
+At first this had a cost: the reclaim source's last read (the hand-off read) was simulated as a DRAM fetch, since vacating early meant it wasn't in the SPM at that timestep. That turned out to be large, not a minor simplification: on MobileNet@2MB, 14 of the 27 pinned tensors were only in the SPM at the moment they were created, and 11 of its 13 depthwise layers read their "pinned" input from DRAM.
+
+**Status.** Fixed (2026-09-24). `pinning.build_handoff_action()` records each hand-off read as a separate `'H'` ("read from SPM, then free") action, kept in its own map so the shared `SpmAllocator` still sees the source vacate and the new tensor take its space. OnSRAM's `scale_sim_runner` treats an `'H'` read as an SPM hit, which is what the paper's Overwrite Optimization describes. In the 2026-09-28 paper-roster re-run, every hand-off read in all 16 runs is served from the SPM (e.g. 210 of 210 on Inception-v3 unfused; see each run's `[OnSRAM SPM] ... hand-off read(s)` line in `onsram/logs/`).
 
 ---
 
@@ -35,6 +43,8 @@ Measured directly on the failing cases: the true aggregate peak simultaneous dem
 **Why the paper doesn't address this.** Checked directly: the paper's own performance evaluation (§6, "Performance Model") uses a closed-form, bandwidth-centric latency estimate — `max(compute_time, data_transfer_time)` — driven only by a boolean *pinned/not-pinned* flag per tensor. It never simulates or requires a real byte-addressed memory at all, so the placement/fragmentation problem this port hit simply cannot arise in the paper's own methodology. This gap is a consequence of deliberately going further than the paper did — wiring the algorithm into a real, byte-addressed simulator to get real cycle-accurate numbers — not a mistake in porting the paper's algorithm faithfully.
 
 **Status.** Left as an honest, disclosed failure rather than engineered around. The pinning decision and the placement step both do exactly what the paper specifies; the mismatch between "aggregate bytes fit" and "the specific combination is contiguously placeable" is a genuine, real limitation of extending a bandwidth-only algorithm into a physically realized one, worth stating plainly rather than papering over with a more complex placement algorithm that would still not carry any guarantee in the general case.
+
+**Re-checked 2026-09-28, at FP16 tensor sizes.** Halving every tensor moved the failure but didn't remove it. InceptionResNetV2 now places at 2MB (331/335 pinned) and 3MB (334/335), but fails at **1MB** (tensor 27's episode [9,12], 117,600 bytes, finds no gap). Inception-v3, which used to fail the same way at 2MB, now places (126/129 fused, 312/318 unfused). Every model in the paper roster places at the paper's 2MB.
 
 ---
 
@@ -77,6 +87,6 @@ This is asymmetric: the equivalent override for the *write* buffer (used to mode
 ## Summary for write-up
 
 - The reference implementation contains a genuine off-by-one that inflates its own reported pinning success rate beyond what's physically achievable; this port uses the paper's own stated (inclusive) definition instead, at the cost of a lower — but real — pin ratio.
-- Making the Overwrite Optimization work correctly under real byte-addressed constraints requires one explicit exception to the general live-range rule, specific to reclaim-source tensors.
-- The paper's own feasibility check (aggregate byte-count only) is provably insufficient to guarantee a real placement exists, once actual SPM addresses are required instead of a closed-form bandwidth estimate — confirmed empirically on a large branched network, where the greedy algorithm's natural tendency to fill the budget to near-100% utilization leaves too little slack for any offline placement heuristic to reliably succeed.
+- Making the Overwrite Optimization work correctly under real byte-addressed constraints requires one explicit exception to the general live-range rule, specific to reclaim-source tensors, plus a separate `'H'` hand-off action so the source's last read is still served from the SPM.
+- The paper's own feasibility check (aggregate byte-count only) is provably insufficient to guarantee a real placement exists, once actual SPM addresses are required instead of a closed-form bandwidth estimate — confirmed empirically on a large branched network, where the greedy algorithm's natural tendency to fill the budget to near-100% utilization leaves too little slack for any offline placement heuristic to reliably succeed. At FP16 it no longer affects any paper model at 2MB, but still shows up on InceptionResNetV2 at 1MB.
 - Beyond the OnSRAM algorithm itself, wiring into real SCALE-Sim surfaced two genuine engine-level bugs: a bandwidth/bank-count mismatch fails with a correct but undocumented assertion; and — far more significantly — the engine's own mechanism for crediting a resident read as free was silently inert in `USER` bandwidth mode, understating measured DRAM savings for any experiment that needs an explicit, paper-matching bandwidth value rather than the engine's own derived default. The second one is now fixed and regression-tested; on the same model and budget, fixing it changed the measured speedup from a misleading ~1.003x to a genuine 1.87x once the paper's real hardware ratio (39×39 array, 32 GBps) is actually in effect.

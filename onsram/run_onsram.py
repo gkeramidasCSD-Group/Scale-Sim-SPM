@@ -1,12 +1,12 @@
 # onsram/run_onsram.py
 """
 OnSRAM-Static entry point -- Phase B+C (the algorithm port: FoM scoring,
-greedy whole-interval pinning, BFS-DFS scheduling) plus Phase D (wiring
-that decision into real SCALE-Sim via OnSRAM's own
-onsram_helpers/scale_sim_runner.py, replacing OnSRAM's original
-closed-form latency estimator entirely with real, engine-measured cycle
-counts and DRAM byte traffic). See onsram/docs/onsram_integration_plan.md
-for the full roadmap.
+greedy whole-interval pinning, BFS-DFS scheduling) plus Phase D (timing
+that decision with OnSRAM's own onsram_helpers/scale_sim_runner.py:
+SCALE-Sim's compute cycles for conv layers, and the paper's Sec. 6
+accounting for memory -- each real tensor fetched once, per-layer
+max(compute, transfer)). See onsram/docs/onsram_integration_plan.md for
+the full roadmap.
 
 COSMA and OnSRAM are two separate jobs that happen to sit on the same
 SCALE-Sim engine, not one depending on the other's code: graph parsing
@@ -45,8 +45,8 @@ Usage:
   python3 run_onsram.py --no-logs                          # skip per-combination log files, terminal only
   python3 run_onsram.py --no-scale-sim                     # Phase C only, skip the slow real SCALE-Sim pass
 
-Phase D is real, engine-driven simulation, not a closed-form estimate --
-expect it to be genuinely slow: two full SCALE-Sim passes (a plain
+Phase D runs SCALE-Sim on every conv layer for its compute cycles --
+expect it to be slow: two full SCALE-Sim passes (a plain
 baseline plus an OnSRAM-aware pass) over every conv-like layer, timed
 directly at ~3 minutes total for MobileNet's 30 layers alone. A model
 with many more conv-like layers (e.g. DenseNet's ~156) will take
@@ -275,11 +275,10 @@ def run_onsram_scale_sim(result: dict, model_json_path: str, config_path: str,
     run_onsram()) through OnSRAM's own, self-contained SCALE-Sim wiring
     (onsram_helpers.scale_sim_runner.run_onsram_aware() -- a duplicate of
     COSMA's baseline.run_cosma_aware(), not an import of it; see
-    scale_sim_runner.py's module docstring for why) instead of trusting
-    the decision layer's own bookkeeping -- this is what finally replaces
-    OnSRAM's original closed-form latency estimator (dropped entirely per
-    onsram/docs/onsram_integration_plan.md's Phase D) with real,
-    engine-measured cycle counts and DRAM byte traffic.
+    scale_sim_runner.py's module docstring for why). SCALE-Sim supplies
+    each conv layer's compute cycles; DRAM traffic is each real tensor
+    once, the paper's Sec. 6 accounting (see
+    scale_sim_runner._simulate_layer()).
 
     layer_stats: scale_sim_runner.run_baseline()'s output for this model --
         the plain, no-management simulation. Schedule- and budget-independent
@@ -300,8 +299,8 @@ def run_onsram_scale_sim(result: dict, model_json_path: str, config_path: str,
     always zero here and are dropped rather than carried over unused.
     What's left -- and what actually drives every byte saved in this
     port -- is the same "residency credit" concept COSMA's own accounting
-    uses: bytes SCALE-Sim's engine confirms are avoidable simply by
-    keeping an activation on-chip across layers (ifmap credit, from
+    uses: bytes avoided by keeping an activation on-chip across layers
+    (ifmap credit, from
     resident_action 'P'/'H' reads) plus pinned outputs never being
     written back to DRAM (ofmap credit -- only for outputs OnSRAM pinned,
     'C' at their layer's t; unpinned outputs are written back as in the
@@ -390,9 +389,8 @@ def run_onsram_scale_sim(result: dict, model_json_path: str, config_path: str,
 
 
 def print_dram_savings(scale_sim_result: dict) -> None:
-    """The actual "how much DRAM traffic did we save" report for the log --
-    real, engine-measured numbers from run_onsram_scale_sim(), not the
-    decision layer's own estimate."""
+    """The actual "how much DRAM traffic did we save" report for the log,
+    from run_onsram_scale_sim()'s numbers."""
     r = scale_sim_result
     print("\n--- REAL SCALE-SIM RESULTS (Phase D: scale_sim_runner.run_onsram_aware()) ---")
     print(f"  baseline DRAM bytes (no SPM mgmt):      {r['baseline_dram_bytes']:>12,d}")

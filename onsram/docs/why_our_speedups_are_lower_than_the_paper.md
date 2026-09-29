@@ -4,32 +4,7 @@
 with the paper config (`configs/scale_onsram.cfg`: 39×39 array, 32 B/cycle
 DRAM, 2 MB SPM), unless it's marked as the paper's.*
 
-> **Current state (2026-09-25):** all four causes below are fixed in
-> OnSRAM's code. MobileNet now measures 1.36×, SqueezeNet1.1 1.24× and
-> MobileNetV2 1.63×, each at 98–100% of our own infinite-SPM ceiling. What
-> still separates us from the paper's headline numbers is explained in
-> "Why compute takes so much of the execution time in our setup" near the
-> end. In short: our TFLite graphs have BatchNorm/ReLU folded into the
-> convs (in the paper's one layer-fusion experiment, §7.1.6, OnSRAM gets
-> 1.01–2.17×, avg 1.31×), and SCALE-Sim's array needs 1.6–2× the ideal
-> compute time. The sections below keep the original analysis and
-> numbers, with a "Status" note on each fix.
 
-## The short version
-
-On MobileNetV1 the paper reports that OnSRAM makes the network about **4.8×
-faster**, and that an infinitely large SPM would make it **5.17× faster**
-(Table 1). We measure **1.07×**.
-
-The main reason is not the SPM-management logic. It's that **our simulator
-thinks MobileNet is mostly limited by computation, while the paper's model
-thinks it's mostly limited by memory traffic.** SPM management only reduces
-memory traffic, so it can only help layers that are waiting on memory.
-
-Measured directly: in our setup, even an *infinitely large* SPM, one that
-removes all activation traffic, would make MobileNet only **1.28× faster**.
-No pinning algorithm, however good, can beat that ceiling. The paper's
-ceiling for the same network is 5.17×.
 
 Four things contribute. In order of impact:
 
@@ -72,8 +47,8 @@ difference. The difference is **what number goes into each side**:
 
 | | Paper | Our port |
 |---|---|---|
-| Compute time | A model of a real accelerator, calibrated to within 1% of hardware measurements (§6, refs [93]/[10]) | SCALE-Sim's cycle-by-cycle simulation of a 39×39 systolic array |
-| Memory time | Each input/weight/output element moved once ("ideal tiling… each data element is fetched once", §6) | The number of DRAM accesses SCALE-Sim actually generates (includes re-reads), ÷ 32 |
+| Compute time | A model of a real accelerator, calibrated to within 1% of hardware measurements (§6, refs [93]/[10]) | SCALE-Sim's cycle-by-cycle simulation of a 39×39 systolic array, stall cycles removed |
+| Memory time | Each input/weight/output element moved once ("ideal tiling… each data element is fetched once", §6) | Same: each real tensor once, ÷ 32 (since 2026-09-25, see Cause 3) |
 
 **What OnSRAM can change:** only memory time. Pinning a tensor in the SPM
 means it doesn't cross the DRAM link. If a layer is already slow because of
@@ -362,7 +337,10 @@ because its own model (Eq. 7) creates every tensor in the SPM. The effect
 is small because OnSRAM pins most outputs (MobileNet: 25 of 28), and the
 remaining output-write saving is now legitimate.
 
-## Results now (2026-09-25)
+## Results (2026-09-25, superseded)
+
+*Kept for history. Current numbers: "Full roster vs the paper (re-run
+2026-09-28)" below.*
 
 Paper config, 2 MB SPM, batch 1. Code state: hand-off reads from SPM,
 channels-across-columns depthwise, ideal tiling, pinned-only free outputs,
@@ -382,7 +360,10 @@ ceiling on every model, so the pinning itself is doing its job. What
 limits the speedup is how much of each layer's time is compute, explained
 next.
 
-## Results with non-conv layers costed and unfused graphs (2026-09-26)
+## Results with non-conv layers costed and unfused graphs (2026-09-26, superseded)
+
+*Kept for the two changes it introduced. Current numbers: "Full roster vs
+the paper (re-run 2026-09-28)" below.*
 
 Two more changes since the table above:
 - **Non-conv layers are now costed** (both COSMA and OnSRAM): DENSE runs
@@ -417,45 +398,73 @@ hand-off read served from SPM, 97–99% of tensors pinned.
   entirely compute time (881,247 cycles), and SCALE-Sim's array needs
   ~2× the ideal compute for MobileNet (next section).
 
-## Full roster vs the paper (2026-09-26)
+## Full roster vs the paper (re-run 2026-09-28)
 
-Paper config (39×39 array, 32 B/cycle, 2 MB SPM, batch 1, FP16), final
+Paper config (39×39 array, 32 B/cycle, 2 MB SPM, batch 1, FP16), current
 code state: hand-off reads from SPM, channels-across-columns depthwise,
 grouped convs, ideal tiling, pinned-only free outputs, fetch-once traffic,
-stall-free compute, non-conv layers costed (dense by formula). All 16 runs:
-0 SpmAllocator violations. The "~90% of ∞ SPM" column is only a guide: the
-paper states OnSRAM-Static reaches ~90% of the infinite-SPM speedup
-overall, not per model. Not in the roster: Inception-v4, SSD300, PTB-LSTM,
-Multi-Head Attention.
+stall-free compute, non-conv layers costed (dense by formula).
 
-- Matches or close: AlexNet, ResNet-50, Inception-v3, GoogLeNet,
-  SqueezeNet1.1 (unfused).
-- MobileNetV1: limited by SCALE-Sim's compute (~2× ideal: half-empty tiles
-  and fill/drain on its many small late layers).
-- ResNeXt-50: same compute limit; the paper's version may also have been
-  much more memory-bound (a guess, not verified: TensorFlow had no native
-  grouped conv in 2018–2019, so ResNeXt was often built as 32 split
-  branches plus a concat, adding memory-bound nodes).
-- SqueezeNet1.1: ~1% above the paper's ∞ SPM bound, likely from the
-  BiasAdd nodes the unfuser adds after every conv.
-- Inception-v3 now runs (it used to fail in OnSRAM's placement step; FP16
-  halved tensor sizes, so placement succeeds).
-- New models (2026-09-26): AlexNet, GoogLeNet, ResNeXt-50, built with
-  `spm_common/build_paper_models.py`.
+Produced by `python3 run_paper_reproduction.py`: one log per run in
+`onsram/logs/<model>_2MB_paper.log`, all 16 rows in
+`onsram/results/paper_reproduction.csv` (gitignored). The numbers reproduce
+the 2026-09-26 table to the second decimal. Every run: 0 `SpmAllocator`
+violations and every Overwrite Optimization hand-off read served from the
+SPM (from each log's `[OnSRAM SPM]` lines). Not in the roster: VGG16
+(memory), Inception-v4, SSD300, PTB-LSTM, Multi-Head Attention; see
+`onsram_model_roster.md`.
 
-| Model | Ours, fused | Ours, unfused | Paper 1-Step | Paper ∞ SPM | ~90% of ∞ SPM | Unfused vs paper |
-|---|---:|---:|---:|---:|---:|---|
-| AlexNet | 1.01× | **1.04×** | 1.04× | 1.04× | ~1.04× | matches |
-| ResNet-50 | 1.19× | **1.60×** | 1.33× | 1.75× | ~1.58× | matches |
-| Inception-v3 | 1.17× | **1.42×** | 1.10× | 1.64× | ~1.48× | close |
-| GoogLeNet | 1.29× | **1.61×** | 1.01× | 1.94× | ~1.75× | a bit low |
-| SqueezeNet1.1 | 2.01× | **2.87×** | 1.57× | 2.84× | ~2.56× | ~1% above ∞ SPM |
-| MobileNetV1 | 1.37× | **2.78×** | 2.84× | 5.17× | ~4.65× | below |
-| ResNeXt-50 | 1.19× | **1.73×** | 1.40× | 3.86× | ~3.47× | far below |
-| MobileNetV2 | 1.62× | **2.69×** | — | — | — | not in paper |
-| VGG16 | not run (runs out of memory; could crash the machine) | | 1.03× | 1.19× | | |
+**New column: our ∞-SPM ceiling.** The same baseline with every activation
+on-chip and weights still fetched once, i.e. Table 1's ∞-SPM experiment on
+our simulator. It's computed from the baseline pass (Σ max(compute, weight
+bytes ÷ 32)). That's valid because per-layer compute cycles are identical
+in the baseline and OnSRAM passes; checked on SqueezeNet1.1 unfused, where
+0 of 92 layers differ (411,000 compute cycles in both). The ceiling
+separates the two questions: *is our simulator as memory-bound as the
+paper's?* (our ceiling vs Table 1) and *does the pinning get what's
+available?* (ours vs our ceiling).
 
-### Against the paper's own OnSRAM-Static results (Fig. 7)
+| Model | Ours, fused | Ours, unfused | Our ∞ ceiling (unfused) | Share of our ceiling | Paper OnSRAM-Static (Fig. 7) | Unfused vs paper | Paper ∞ SPM (Table 1) | Our ceiling vs Table 1 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| AlexNet | 1.01× | **1.04×** | 1.04× | 100% | 1.02× | +2% | 1.04× | 0% |
+| ResNet-50 | 1.19× | **1.60×** | 1.76× | 91% | 1.49× | +8% | 1.75× | +1% |
+| Inception-v3 | 1.17× | **1.42×** | 1.56× | 91% | 1.29× | +10% | 1.64× | −5% |
+| GoogLeNet | 1.29× | **1.61×** | 1.77× | 90% | 1.83× | −12% | 1.94× | −9% |
+| SqueezeNet1.1 | 2.01× | **2.87×** | 3.63× | 79% | 2.20× | +31% | 2.84× | **+28%** |
+| ResNeXt-50 | 1.19× | **1.73×** | 1.92× | 90% | 3.81× | −55% | 3.86× | **−50%** |
+| MobileNetV1 | 1.37× | **2.78×** | 2.86× | 97% | 4.76× | −42% | 5.17× | **−45%** |
+| Geomean of these 7 | 1.29× | **1.76×** | 1.93× | 91% | 2.03× | −13% | 2.29× | −15% |
+| *MobileNetV2 (not in paper)* | 1.62× | 2.69× | 4.42× | 61% | — | — | — | — |
+
+Fused runs reach 93–100% of their own (much lower) ceilings, geomean 1.33×.
+
+What the ceiling column shows:
+
+- **The pinning matches the paper's own efficiency claim.** The paper says
+  OnSRAM-Static's improvement "is already 90% of that achievable by the
+  ideal Infinite SPM" (§7.1.1; its geomeans are 1.59× vs 1.76×). Ours,
+  unfused: 1.76× vs 1.93×, **91%**. Per model it's 90–100%, except
+  SqueezeNet (79%, below).
+- **Where we match the paper, it's because our simulator is about as
+  memory-bound as the paper's.** AlexNet, ResNet-50 and Inception-v3 have
+  ceilings within 0–5% of Table 1, and GoogLeNet within 9%.
+- **MobileNetV1 and ResNeXt-50's gap is in the ceiling, not the pinning.**
+  OnSRAM gets 97% and 90% of what our simulator allows, but our ceilings
+  are about half the paper's (2.86× vs 5.17×, 1.92× vs 3.86×). No pinning
+  algorithm could close that; it's the compute side of `max(compute,
+  transfer)`, explained in the next section. For ResNeXt the paper's graph
+  may also have been more memory-bound: a guess, not verified (TensorFlow
+  had no native grouped conv in 2018–2019, so ResNeXt was often built as
+  32 split branches plus a concat, adding memory-bound nodes).
+- **SqueezeNet1.1 is the opposite case: our graph is more memory-bound than
+  the paper's.** Our ceiling is 28% above Table 1, so our speedup can land
+  31% above the paper's even at only 79% of our ceiling. The extra BiasAdd
+  node the unfuser adds after every conv is the likely cause (if the
+  paper's graph had bias inside its convs, ours has extra memory-bound
+  work), plus possibly a different SqueezeNet version (the paper doesn't
+  say which; ours is 1.1).
+
+### How the paper's per-model Fig. 7 values were read
 
 What we model is OnSRAM-Static at 2 MB, so the right target is the paper's
 OnSRAM-Static bar in Fig. 7, not the 1-Step row (a simpler baseline scheme,
@@ -471,24 +480,8 @@ chart's 0/1/2/3 gridlines. Check: the chart's ∞ SPM bars read within
 Paper's OnSRAM-Static values read this way: AlexNet 1.02, VGG16 1.02,
 GoogLeNet 1.83, Inception-v3 1.29, Inception-v4 1.31, ResNet-50 1.49,
 SSD300 1.22, ResNeXt 3.81, MobileNetV1 4.76, SqueezeNet 2.20, PTB 1.00,
-Multi-Head Attention 1.06, geomean 1.59.
-
-| Model | Ours, fused | Ours, unfused | Paper OnSRAM-Static (Fig. 7) | Unfused vs paper |
-|---|---:|---:|---:|---:|
-| AlexNet | 1.01× | 1.04× | 1.02× | +2% |
-| ResNet-50 | 1.19× | 1.60× | 1.49× | +7% |
-| Inception-v3 | 1.17× | 1.42× | 1.29× | +10% |
-| GoogLeNet | 1.29× | 1.61× | 1.83× | −12% |
-| SqueezeNet1.1 | 2.01× | 2.87× | 2.20× | +30% |
-| ResNeXt-50 | 1.19× | 1.73× | 3.81× | −55% |
-| MobileNetV1 | 1.37× | 2.78× | 4.76× | −42% |
-| Geomean of these 7 | 1.29× | 1.76× | 2.03× | −13% |
-
-- Within ~10%: AlexNet, ResNet-50, Inception-v3; GoogLeNet 12% low.
-- SqueezeNet1.1 30% high (our unfused SqueezeNet has more memory-bound
-  work than the paper's; the extra BiasAdd nodes are the likely cause).
-- ResNeXt-50 and MobileNetV1 far low: compute-limited in SCALE-Sim (~2×
-  ideal), plus possibly a more memory-bound ResNeXt graph in the paper.
+Multi-Head Attention 1.06, geomean 1.59. Table 1's ∞-SPM and 1-Step rows
+are printed text (checked against the PDF 2026-09-28).
 
 ## Why compute takes so much of the execution time in our setup
 
@@ -592,59 +585,58 @@ compare against Table 1 directly.
 
 ### What we could still do
 
+Two of the four ideas listed here on 2026-09-25 are done: non-conv ops
+are costed as memory-bound nodes, and unfused graphs are run and compared
+against the paper (both 2026-09-26, results above). Still open:
+
 - **Compare our fused models against the §7.1.6 layer-fusion range**
   (1.01–2.17×, avg 1.31×), keeping in mind it has no per-model numbers.
-- **Simulate the non-conv ops** (ADD, CONCAT, pooling) as memory-bound
-  nodes (bytes in + bytes out, little compute). They currently cost 0,
-  which hides some of OnSRAM's benefit.
 - **Use ideal compute (FLOPs ÷ peak)** instead of SCALE-Sim's array, to
   mirror a roofline model. That would drop the cycle-level array
   simulation, and it only closes part of the gap (see the table above).
-- **Run unfused graphs** made by `spm_common/unfuse_model.py` (ported from
-  the reference implementation's `onsram_bw/onsram_unfused.py`) and
-  compare against Table 1 directly.
 
 ---
 
 ## What this means, and what we could do
 
-| # | Cause | Direction it pushes our OnSRAM speedup | Fixing it moves us… |
+All four original causes are fixed (status as of 2026-09-28):
+
+| # | Cause | Direction it pushed our OnSRAM speedup | Status |
 |---|---|---|---|
-| 1 | Depthwise compute ~40–60× too slow | **down, a lot** (caps MobileNet at 1.28×) | closer to paper |
-| 2 | Overwrite hand-off reads pinned inputs from DRAM | down | closer to paper |
-| 3a | float32 SPM budget / 1-byte DRAM elements vs FP16 | down | closer to paper |
-| 3b | Re-reads, partial-sum write-backs | mixed | closer to paper's "fetch once" |
-| 4 | Every output write free | **up** | closer to paper (our number drops) |
+| 1 | Depthwise compute ~40–60× too slow | **down, a lot** (capped MobileNet at 1.28×) | Fixed 2026-09-24: channels-across-columns mapping, in both COSMA's and OnSRAM's topology builders |
+| 2 | Overwrite hand-off reads pinned inputs from DRAM | down | Fixed 2026-09-24: `'H'` hand-off reads served from SPM (OnSRAM only) |
+| 3a | float32 SPM budget / 1-byte DRAM elements vs FP16 | down | Fixed 2026-09-25: FP16 everywhere (OnSRAM only) |
+| 3b | Re-reads, partial-sum write-backs | mixed | Fixed 2026-09-25: fetch-once traffic (OnSRAM only) |
+| 4 | Every output write free | **up** | Fixed 2026-09-24: only pinned outputs stay on-chip (OnSRAM only) |
 
-Possible fixes, roughly in order of value:
+What's left is described above under "Why compute takes so much of the
+execution time": SCALE-Sim's array needs 1.6–2× the ideal compute time,
+which caps the memory-bound mobile networks (MobileNetV1, ResNeXt). The
+open choice is the same one Cause 1 raised: keep SCALE-Sim's systolic-array
+compute (honest for this array, not the paper's hardware), switch to ideal
+FLOPs ÷ peak (closer to the paper's ideal-dataflow assumption; its actual
+compute model is calibrated to its chip and not published), or report both. That affects all
+three papers the same way, so it should be one shared decision.
 
-1. **Cause 2 (hand-off).** Let the consuming layer read a reclaimed tensor
-   from the SPM at its hand-off timestep. This is what the paper describes.
-   It needs `SpmAllocator`/placement to accept "B overwrites A in place" at
-   that one timestep. OnSRAM-only change, clearly paper-faithful.
-2. **Cause 3a (one precision).** Use one bytes-per-element (FP16 = 2) for
-   both the SPM budget and DRAM traffic. Worth confirming the paper's
-   precision from ref [10]/[93] first.
-3. **Cause 4 (free outputs).** Charge a DRAM write for outputs OnSRAM didn't
-   pin. Once (1) is done, pinned-and-overwritten tensors stay consistent.
-4. **Cause 1 (depthwise compute).** The hardest, because it's a question of
-   *what we want to model*:
-   - keep SCALE-Sim's systolic-array result (honest for this array, but not
-     the paper's hardware);
-   - model depthwise layers another way (e.g. running on a SIMD unit like
-     the paper's, or using ideal FLOPs ÷ peak for them);
-   - or report both.
-
-   This affects all three papers the same way, so it should be one shared
-   decision, not an OnSRAM-only patch.
-
-Until (1) and (4) are addressed, **don't expect MobileNet-style networks to
-get near the paper's numbers**. The best case in our current setup is 1.28×
-for MobileNet, however good the pinning is.
+**Cross-paper note.** Causes 2–4 were fixed in OnSRAM's files only. COSMA
+still counts SCALE-Sim's own DRAM accesses at 1 byte per element, so COSMA
+and OnSRAM DRAM/speedup numbers are no longer in the same units. They need
+to be brought back into line before the three-paper comparison.
 
 ---
 
 ## How these numbers were measured (to re-check them)
+
+- **Current per-model results** (the 2026-09-28 table): `cd onsram &&
+  python3 run_paper_reproduction.py`. One log per run in
+  `onsram/logs/<model>_2MB_paper.log` (pin decisions, allocator replay,
+  hand-off reads, DRAM and cycle totals, ∞-SPM ceiling), and a summary in
+  `onsram/results/paper_reproduction.csv` (gitignored). Our ∞-SPM ceiling
+  is computed from the same baseline pass: Σ max(compute, weight bytes ÷
+  32), i.e. every activation on-chip, weights fetched once.
+
+The items below are how the original 2026-09-24 analysis was measured,
+under the accounting of that time (float32, SCALE-Sim's own DRAM counts):
 
 - Per-layer compute vs ideal: ran `single_layer_sim` on each MobileNet layer
   with `configs/scale_onsram.cfg` and the port's own `_make_memory_system()`,
@@ -652,10 +644,69 @@ for MobileNet, however good the pinning is.
   counts).
 - Infinite-SPM ceiling: same run over every layer. Baseline = Σ max(cycles,
   all DRAM ÷ 32); infinite SPM = Σ max(cycles − stalls, weight DRAM ÷ 32).
-  The baseline total, 1,755,007 cycles, matches
-  `onsram/logs/MobileNet_2MB_paper.log` exactly.
+  The baseline total, 1,755,007 cycles, matched that day's
+  `onsram/logs/MobileNet_2MB_paper.log` exactly (that log has since been
+  overwritten by later runs).
 - Resident actions: `run_onsram.run_onsram()` on MobileNet at 2 MB, then
   looking up each conv layer's input tensor in `resident_action` at that
   layer's timestep.
 - Paper quotes: from the PDF (`~/Downloads/OnSRAM_...rators-1.pdf`), §3.1,
   §3.2, §6, §7.1, Table 1.
+
+---
+
+## What we keep, and what changes for the three-paper testbench
+
+Two different goals, two different rules:
+- **Reproducing the OnSRAM paper**: evaluate OnSRAM with the paper's own
+  model. The first table is that setup, as it stands on 2026-09-28.
+- **Comparing COSMA, OnSRAM and SMM**: each algorithm still makes its own
+  paper-faithful decisions (what to pin, spill, retrieve; the schedule),
+  but every plan is costed by one shared evaluator with the same rules.
+  Otherwise a difference in numbers mixes the algorithms with the cost
+  models. The second table is what that needs.
+
+### Keep: OnSRAM setup that reproduces the paper
+
+| Area | What we keep | Paper basis | Where |
+|---|---|---|---|
+| Figure of Merit | Eq. 1 with α=0.4, β=0.5, γ=0.1 | §4.2, §6 | `onsram_helpers/fom.py` |
+| Schedule | BFS-DFS hybrid: activation-bound children to the head of the queue | §4.1 | `onsram_helpers/scheduling.py` |
+| Pinning | Greedy by FoM, whole lifetime only (inclusive), activations only; weights streamed, never pinned | §3.2, §4.2 | `onsram_helpers/pinning.py` |
+| Overwrite Optimization | Reclaimed tensor vacates one step early; its last read is an `'H'` hand-off served from the SPM | §4.2 | `pinning.build_handoff_action()` |
+| SPM | One shared 2 MB scratchpad | §3.1, §6 | `--spm-mb 2`, `SpmAllocator` |
+| Hardware | 39×39 array at 1 GHz (≈3.04 TFLOP), 32 B/cycle DRAM, batch 1 | §6 | `configs/scale_onsram.cfg` |
+| Precision | FP16, 2 bytes per element, for the SPM budget and all traffic | §6 (FP16 SIMD unit; tensor precision is our inference) | `scale_sim_runner.BYTES_PER_ELEMENT` |
+| Timing model | Per layer `max(compute, transfer)`; no stalls, no bank conflicts, no DRAM latency. §3.3 calls the paper's tool a "cycle-accurate simulator", but §6 describes this bandwidth-centric model | §6 | `run_onsram_scale_sim()` |
+| Traffic | Each real tensor once: input unless in the SPM, output unless pinned, weights always | §6: "ideal tiling … each data element is fetched once" | `scale_sim_runner._simulate_layer()` |
+| Output rule | Only pinned outputs stay on-chip; the rest are written back | §3.1, §3.2 | `scale_sim_runner._ofmap_pinned()` |
+| Non-conv ops | Pure data movement (compute ≈ 0); DENSE by SCALE-Sim's fold formula | Our model; §7.1.3 treats these as activation-bound | `scale_sim_runner._nonconv_layer_stats()` |
+| Graphs | Unfused exports (BatchNorm/BiasAdd/ReLU as separate nodes) for comparison against Fig. 7 / Table 1 | §4, §7.1.3, §7.1.6 (our reading) | `spm_common/unfuse_model.py` |
+| Compute source | SCALE-Sim's stall-free cycles for conv layers; depthwise mapped channels-across-columns | Not the paper's (calibrated, unpublished model); open choice | `onsram_helpers/topology.py`, `_simulate_layer()` |
+| Physical check | Real SPM addresses + `SpmAllocator` replay; goes beyond the paper, which has no addresses | — | `run_onsram.check_physical_validity()` |
+| Paper targets | Fig. 7 OnSRAM-Static bars (mostly read off the figure) and Table 1 ∞ SPM | Fig. 7, Table 1 | `run_paper_reproduction.py` |
+
+Still open for matching the paper: the compute model (SCALE-Sim vs ideal;
+mainly MobileNetV1), how the paper's ResNeXt graph was built, VGG16
+(memory), Inception-v4/SSD300/PTB-LSTM/Multi-Head Attention (not
+sourced or not modelled), OnSRAM-Eager, and the energy results.
+
+### Change: one testbench for COSMA, OnSRAM and SMM
+
+| Area | Today | Needed for a common testbench |
+|---|---|---|
+| Evaluator | Each paper's runner costs its own plan (`cosma/helpers/baseline.py`, `onsram/onsram_helpers/scale_sim_runner.py`) | One shared evaluator (e.g. in `spm_common/`) that takes any plan (resident, hand-off, spill and retrieve actions plus the schedule) and applies the same cost rules. The per-paper runners stay as they are for the paper reproductions |
+| Baseline | Each runner computes its own "no SPM management" pass | One shared baseline per model and config |
+| Bytes per element | COSMA: float32 SPM budget, 1 byte per element of traffic. OnSRAM: FP16 for both | One data-width parameter for all three |
+| Traffic model | COSMA: SCALE-Sim's own DRAM counts (re-reads, partial sums). OnSRAM: fetch-once | One model for all three. Fetch-once hides SMM's benefit (re-fetches inside a layer); SCALE-Sim's counts thrash when buffers are small. With SMM in, this needs an analytic model of tiling inside a layer with finite buffers |
+| Compute model | OnSRAM: SCALE-Sim cycles minus stalls. COSMA: SCALE-Sim cycles including stalls (the 09-25 change was OnSRAM-only) | One source for all three (SCALE-Sim stall-free, or ideal), cached per model, array size and dataflow so the rest of a sweep needs no re-simulation |
+| Hardware config | Chosen per runner (`run_onsram.py` defaults to `configs/scale.cfg`, `run_paper_reproduction.py` to `configs/scale_onsram.cfg`) | One config per experiment point, shared by all three |
+| Non-conv ops | Same rules, duplicated in both runners | Move into the shared evaluator |
+| Weights in the SPM budget | No implementation charges weights against the budget; the free-room split is only logged | One rule for all three. OnSRAM's paper streams weights through the same SPM; COSMA's "+parameter" mode isn't built |
+| SMM | Port lives on the `sim-opt` branch | Merge into the same structure (`spm_common/` plus its own folder) |
+| Common models | No model runs on all three yet | Pick a set all three can run (e.g. MobileNetV1, ResNet-50) |
+| Depthwise/grouped mapping | Same in both topology builders | Keep (already shared) |
+| Physical check | `SpmAllocator` shared | Keep (already shared) |
+| Output-on-chip rule | COSMA creates every output in the SPM (its Eq. 7); OnSRAM only pinned ones | Keep per paper: it's part of each plan, and the shared evaluator just follows it |
+| Scheduling freedom | COSMA's ILP and OnSRAM's BFS-DFS reorder layers; SMM uses a fixed order | Keep per paper, but report it next to every result, since reordering is a bigger problem than placement alone |
+| Metrics | Each runner prints its own | Same set for all: DRAM bytes (ifmap/filter/ofmap), cycles, speedup vs the shared baseline, share of compute-bound layers, solve time |
