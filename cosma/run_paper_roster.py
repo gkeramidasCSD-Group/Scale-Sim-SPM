@@ -288,7 +288,12 @@ def main():
     parser.add_argument('--time-limit', type=float, default=900,
                          help="Passed to run_paper_baselines.py's own --time-limit "
                               "(MPMF schedule + cosma_native solves). Default: 900.")
-    parser.add_argument('--solver', choices=['cbc', 'gurobi'], default='cbc')
+    parser.add_argument('--solver', choices=['cbc', 'gurobi'], default='gurobi',
+                         help="ILP solver backend (default: gurobi, matching every other "
+                              "entry point's CLI default -- run_cosma.py/run_paper_baselines.py/"
+                              "run_experiments.py/visualize_spm.py. Falls back to cbc "
+                              "automatically only if you pass --solver cbc explicitly; no "
+                              "license needed for cbc.")
     parser.add_argument('--schedules', choices=['default', 'mpmf', 'both'], default='default',
                          help="Forwarded to run_paper_baselines.py's own --schedules. Default "
                               "here is 'default' (cheap, skips the real MPMF-schedule ILP "

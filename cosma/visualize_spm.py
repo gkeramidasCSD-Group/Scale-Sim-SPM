@@ -553,12 +553,13 @@ def main():
                               "raw addresses tend to scatter with pointless gaps (see "
                               "spm_allocator.compact_spm_plan()). Ignored with --bounds-only.")
     parser.add_argument('--solver', choices=['cbc', 'gurobi'], default='gurobi',
-                         help="ILP solver backend (default: cbc, no license needed). "
-                              "'gurobi' requires a working Gurobi license -- see "
-                              "cosma_Ilp.solve()'s docstring -- but measured ~600x faster "
-                              "than CBC on Inception-V3-sized problems in this project's "
-                              "own profiling; worth using whenever available, especially "
-                              "with --true-mpmf/--free-schedule on a large model.")
+                         help="ILP solver backend (default: gurobi -- requires a working "
+                              "Gurobi license, see cosma_Ilp.solve()'s docstring -- measured "
+                              "~600x faster than CBC on Inception-V3-sized problems in this "
+                              "project's own profiling, especially worth it with "
+                              "--true-mpmf/--free-schedule on a large model. Pass --solver cbc "
+                              "to fall back to PuLP's bundled open-source solver, no license "
+                              "needed.")
     args = parser.parse_args()
 
     model_json_path = model_resolver.resolve_model_json(

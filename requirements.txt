@@ -7,3 +7,4 @@ pandas
 cython
 setuptools
 matplotlib
+pulp==3.3.2

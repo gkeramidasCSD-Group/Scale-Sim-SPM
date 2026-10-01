@@ -480,11 +480,11 @@ if __name__ == '__main__':
                               "the raw addresses tend to scatter with pointless gaps (see "
                               "spm_allocator.compact_spm_plan()). Ignored with --no-plot.")
     parser.add_argument('--solver', choices=['cbc', 'gurobi'], default='gurobi',
-                         help="ILP solver backend (default: cbc, no license needed). "
-                              "'gurobi' requires a working Gurobi license -- see "
-                              "cosma_Ilp.solve()'s docstring -- but measured ~600x faster "
-                              "than CBC on Inception-V3-sized problems in this project's "
-                              "own profiling; worth using whenever available.")
+                         help="ILP solver backend (default: gurobi -- requires a working "
+                              "Gurobi license, see cosma_Ilp.solve()'s docstring -- measured "
+                              "~600x faster than CBC on Inception-V3-sized problems in this "
+                              "project's own profiling. Pass --solver cbc to fall back to "
+                              "PuLP's bundled open-source solver, no license needed.")
     args = parser.parse_args()
 
     run_cosma(
