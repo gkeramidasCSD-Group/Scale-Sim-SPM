@@ -106,6 +106,19 @@ def _depthwise_channels(layer: dict):
     return layer['input_shape'][3]
 
 
+def _conv3d_temporal_output(layer: dict):
+    """
+    T' (real temporal output size) for a CONV_3D layer, else None. The
+    topology builder writes a CONV_3D layer's row as ONE output frame's
+    worth of 2D-conv fold structure (temporal kernel folded into Channels
+    -- see topology_builder.py's module docstring); _simulate_layer() uses
+    T' to scale that single-frame result up to the real T'-frame total.
+    """
+    if layer.get('op') != 'CONV_3D':
+        return None
+    return layer['output_shape'][1]
+
+
 # Layers that only re-describe a tensor (no data moves on a real accelerator).
 _VIEW_OPS = ('RESHAPE', 'SQUEEZE', 'FLATTEN', 'EXPAND_DIMS')
 
@@ -331,6 +344,7 @@ def _simulate_layer(config, topo, layout, row: int, layer: dict, t: int,
 
     detail_items = sim.get_detail_report_items()
     ifmap_dram = int(detail_items[11])
+    ofmap_dram = int(detail_items[17])
     if _depthwise_channels(layer):
         # Depthwise: SCALE-Sim simulated ONE input plane shared by all C
         # columns (see topology builder), so its ifmap count is for the
@@ -343,13 +357,33 @@ def _simulate_layer(config, topo, layout, row: int, layer: dict, t: int,
         # from SCALE-Sim as usual -- those are right for this mapping.
         in_shape = tensor_shapes[_activation_input_tensor_id(layer)]['shape']
         ifmap_dram = 0 if ifmap_resident else math.prod(in_shape)
+    t_out = _conv3d_temporal_output(layer)
+    if t_out:
+        # CONV_3D: SCALE-Sim simulated ONE output frame's worth of fold
+        # structure (temporal kernel folded into Channels -- see topology
+        # builder). compute_cycles and ofmap scale exactly by T' -- output
+        # frames never overlap, so T' independent full-array passes and T'
+        # repetitions of whatever SCALE-Sim's own per-row ofmap DRAM count
+        # is (already fold-inclusive under "ws" dataflow -- verified
+        # empirically this is a pre-existing property of every conv row,
+        # 2D or 3D, not something to "correct" away; see topology_builder.py
+        # module docstring) is exact, not an approximation. ifmap does NOT
+        # scale the same way: input frames DO overlap across output
+        # positions (when temporal stride < kt), so -- same reasoning as
+        # depthwise's ifmap fix above, and for the same over-count reason --
+        # it's replaced with the real input tensor's element count once,
+        # not derived from SCALE-Sim's single-frame number.
+        total_cycles = total_cycles * t_out
+        ofmap_dram = ofmap_dram * t_out
+        in_shape = tensor_shapes[_activation_input_tensor_id(layer)]['shape']
+        ifmap_dram = 0 if ifmap_resident else math.prod(in_shape)
     return {
         'compute_cycles': int(total_cycles),
         # kept split out (rather than pre-summed) so callers can attribute
         # each component separately -- see run_cosma.py's module docstring.
         'ifmap_dram_bytes': ifmap_dram,
         'filter_dram_bytes': int(detail_items[14]),
-        'ofmap_dram_bytes': int(detail_items[17]),
+        'ofmap_dram_bytes': ofmap_dram,
     }
 
 

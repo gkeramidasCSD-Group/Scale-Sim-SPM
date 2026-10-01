@@ -50,7 +50,7 @@ import sys
 _REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _EXPORTED = os.path.join(_REPO_ROOT, 'cosma', '_exported')
 
-CONV_LIKE = ('CONV2D', 'DEPTHWISE_CONV2D', 'DENSE')
+CONV_LIKE = ('CONV2D', 'DEPTHWISE_CONV2D', 'CONV_3D', 'DENSE')
 
 # Substrings of the model name -> whether the original network has BatchNorm.
 _NO_BATCHNORM = ('squeezenet', 'vgg', 'alexnet')

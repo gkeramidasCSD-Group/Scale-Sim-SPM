@@ -1,7 +1,7 @@
 # cosma/helpers/topology_builder.py
 """
 Builds a SCALE-Sim topology CSV from model.json's CONV2D/DEPTHWISE_CONV2D/
-layers only. Every other layer (DENSE, ADD, CONCAT, pooling, PAD,
+CONV_3D layers only. Every other layer (DENSE, ADD, CONCAT, pooling, PAD,
 REDUCE_MEAN, SOFTMAX, ...) has no topology row; the runner costs it
 analytically (_nonconv_layer_stats()).
 
@@ -21,6 +21,29 @@ read once.
 topologies/conv_nets/mobilenet.csv convention: right MAC count, but it
 simulates a filter summing all C channels into one output channel -- 1 of
 the array's columns busy, 1-channel ofmap traffic.)
+
+CONV_3D (video models -- R2Plus1D, S3D) has no native representation either:
+SCALE-Sim's topology row has exactly two spatial dims (H, W), no temporal
+axis. The row here folds the *temporal kernel* size kt into Channels (real
+K-dimension = kt*kh*kw*C_in, matching Filter_H*Filter_W*Channels exactly --
+every output frame uses the full kt-frame receptive field), keeps IFMAP
+H/W and Filter H/W as the real spatial dims/kernel (same-padded as usual),
+and leaves the row's own "output pixel count" as one frame's Ho*Wo, not the
+true T'*Ho*Wo. That gets compute cycles and filter traffic
+(kt*kh*kw*C_in*C_out) right for ONE output frame; the runner's
+_simulate_layer() then scales compute_cycles and ofmap traffic by the real
+T' (temporal output size, read from output_shape). Scaling ofmap by T' is
+exact for the same reason scaling compute_cycles is: SCALE-Sim's own
+per-row ofmap DRAM count is already fold-inclusive (it re-writes/re-reads
+ofmap once per K-dimension fold under the "ws" dataflow -- confirmed
+empirically on ordinary CONV2D layers too, e.g. resnet20 layer 11:
+K=288, ceil(288/32)=9 folds, ofmap count is exactly 9x the naive Ho*Wo*C_out
+-- a pre-existing, already-trusted property of every conv row this codebase
+has ever simulated, not something CONV_3D introduces), and output frames
+are always disjoint, so T'x whatever-that-fold-inclusive-value-is remains
+exact. ifmap is different: replaced with the real input tensor's element
+count, NOT scaled, because input frames *overlap* across output positions
+when temporal stride < kt -- same reasoning as depthwise's ifmap fix.
 """
 import csv
 import json
@@ -54,21 +77,34 @@ def build_topology(model_json_path: str, csv_path: str) -> Dict[int, int]:
 
     for layer in model['layers']:
         op = layer['op']
-        if op not in ('CONV2D', 'DEPTHWISE_CONV2D'):
+        if op not in ('CONV2D', 'DEPTHWISE_CONV2D', 'CONV_3D'):
             continue
 
-        in_shape = layer['input_shape']    # [N, H, W, C]
+        in_shape = layer['input_shape']    # [N, H, W, C] or [N, T, H, W, C]
         out_shape = layer['output_shape']
         params = layer['params']
-        ifmap_h, ifmap_w = in_shape[1], in_shape[2]
-        kh, kw = params['kh'], params['kw']
+
+        if op == 'CONV_3D':
+            # 5D [N, T, H, W, C] -- real spatial dims only; T/kt handled via
+            # Channels folding (see module docstring), not here.
+            ifmap_h, ifmap_w = in_shape[2], in_shape[3]
+            kh, kw = params['kh'], params['kw']
+        else:
+            ifmap_h, ifmap_w = in_shape[1], in_shape[2]
+            kh, kw = params['kh'], params['kw']
         stride = params.get('stride_h', 1)
 
         if params.get('pad') == 'SAME':
             ifmap_h = _same_padded_dim(ifmap_h, kh, stride)
             ifmap_w = _same_padded_dim(ifmap_w, kw, stride)
 
-        if op == 'DEPTHWISE_CONV2D':
+        if op == 'CONV_3D':
+            # Fold the temporal kernel size into Channels -- see module
+            # docstring. real_C_in = in_shape[-1] (5D layout's channel axis).
+            kt = params['kt']
+            channels = kt * in_shape[-1]
+            num_filters = out_shape[-1]
+        elif op == 'DEPTHWISE_CONV2D':
             # Channels-across-columns (see module docstring). Assumes
             # channel multiplier 1 (output channels == input channels),
             # true for every depthwise layer in this repo's models.

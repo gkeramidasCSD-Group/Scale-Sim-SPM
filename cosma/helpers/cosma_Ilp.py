@@ -472,7 +472,20 @@ def build_cosma_model(nodes, tensors, memory_budget_bytes: int, free_schedule: b
     P = {(a, t): pulp.LpVariable(f"P_{a}_{t}", cat='Binary') for a in A for t in T}
     S = {(a, t): pulp.LpVariable(f"S_{a}_{t}", cat='Binary') for a in A for t in T}
     R = {(a, t): pulp.LpVariable(f"R_{a}_{t}", cat='Binary') for a in A for t in T}
-    L = {(a, t): pulp.LpVariable(f"L_{a}_{t}", lowBound=0, upBound=budget, cat='Integer')
+    # Eq.9 (L[a,t] + Size(a) <= MB, unconditional -- the paper states this
+    # with NO residency gate) is folded directly into L's own upper bound
+    # rather than kept as a separate constraint row: mathematically
+    # identical (a tensor that isn't resident can always be pinned to
+    # address 0, which trivially satisfies Size(a) <= budget -- already
+    # guaranteed by assert_tensors_fit_budget() -- so no feasible integer
+    # solution is lost), but cheaper for the solver (a tighter box instead
+    # of an extra |A|x|T| row) and, unlike a big-M-gated version, doesn't
+    # go slack for the LP relaxation whenever resident(a,t) is fractional.
+    # A previous version of this code gated Eq.9 on resident(a,t) via a
+    # budget*(1-resident(a,t)) term -- NOT what the paper says, and
+    # confirmed to make the LP relaxation bound stick at exactly 0.0 on a
+    # real, large solve (DenseNet-121 @ M_H, 1800s/539 B&B nodes, Gurobi).
+    L = {(a, t): pulp.LpVariable(f"L_{a}_{t}", lowBound=0, upBound=budget - size[a], cat='Integer')
          for a in A for t in T}
 
     def resident(a, t):
@@ -559,11 +572,8 @@ def build_cosma_model(nodes, tensors, memory_budget_bytes: int, free_schedule: b
     for a in A:
         prob += pulp.lpSum(S[a, t] for t in T) <= 1, f"Eq8_{a}"
 
-    # Eq.9: resident tensor must fit the budget (relaxed to a no-op when not resident)
-    for a in A:
-        for t in T:
-            prob += (L[a, t] + size[a] <= budget + budget * (1 - resident(a, t)),
-                     f"Eq9_{a}_{t}")
+    # Eq.9 is enforced above via L's own upBound=budget-size[a] -- see that
+    # variable's construction comment.
 
     # Overlap-filtered tensor pairs for Eq.10 (the quadratic-blowup mitigation).
     # Fixed schedule: producer_layer/consumer_layers ARE literal timesteps,

@@ -1841,3 +1841,253 @@ a `DRAM_access.csv` file that doesn't exist in this SCALE-Sim version.
       `visualize_spm.py` (`render_comparison()`/`_render_cosma_panel()`,
       new import), `run_cosma.py`, `run_experiments.py`. All compile
       clean. `docs/STATUS.md` updated alongside this entry.
+
+34. **Rereading the actual paper PDF against our implementation** (not the
+    plan doc's paraphrase, and not memory from prior sessions) surfaced
+    three real evaluation-methodology gaps plus one real ILP formulation
+    bug, fixed/mitigated this session:
+    - **Eq.9 formulation bug, fixed.** The paper states Eq.9 unconditionally:
+      `L[a,t] + Size(a) <= MB` for every `a,t`, no residency gate. This
+      codebase's `cosma_Ilp.build_cosma_model()` had added one
+      (`budget*(1-resident(a,t))`) that isn't in the paper, making the
+      constraint vacuous whenever a tensor isn't resident. Fixed by folding
+      the paper's exact constraint directly into `L`'s own variable bound
+      (`upBound=budget-size[a]` per tensor) instead of a separate,
+      big-M-gated row -- mathematically identical (a non-resident tensor
+      can always be pinned to address 0, trivially satisfying the bound;
+      `assert_tensors_fit_budget()` already guarantees `size[a] <= budget`)
+      but removes ~97K redundant rows on DenseNet-121-sized models, for
+      free. **Verified byte-identical** on both previously-validated
+      fixtures (MobileNetV2-CIFAR10 @64KB, ResNet-20-CIFAR10 @192KB --
+      confirmed via `git stash` A/B, not just "looks right") before and
+      after the fix. **Diagnostic finding, important**: a short (300s)
+      re-solve of DenseNet-121 @ M_H afterward showed the root LP
+      relaxation bound *still* sits at exactly `0.0` -- this fix, while
+      correct and worth keeping, did NOT resolve the earlier-documented
+      pathology (item mentioned in `results_plan.md`'s DenseNet-121 rows:
+      1800s Gurobi solve, bound stuck at 0.0 the entire time). Root cause
+      is therefore Eq.10's own big-M pairwise non-overlap encoding --
+      already verified to match the paper's Eq.10 exactly -- which is an
+      inherent property of the paper's own formulation on a graph this
+      large with liveness spans up to 121 timesteps, not a bug on our
+      side. Presolve had apparently already collapsed most of Eq.9's
+      redundancy before this fix (root-relaxation row count barely
+      changed: 86,401->84,067), explaining why the fix didn't move the
+      needle on solve difficulty despite being a real correctness/paper-
+      fidelity improvement.
+    - **Datatype parity (FP32 -> INT8), implemented for 2 of 3 models.**
+      The paper's Fig.3 caption: "All data are of 8-bit datatype" -- every
+      model exported by this project until today was FP32 (4x the paper's
+      byte sizes). New `cosma/tools/quantize_model.py`: full-integer PTQ
+      via `tf.lite.TFLiteConverter`, mirroring `trim/download_tf_model.py`'s
+      own `tf.keras.applications` model construction, calibrated on random
+      inputs at the model's real shape (COSMA never inspects tensor
+      *values*, only shapes -- same precedent as R2Plus1D-18's random-
+      weight export). `spm_common/model_resolver.resolve_model_json()`
+      gained a `mode` parameter (default `'fp32'`, unchanged for every
+      existing caller including OnSRAM) threaded into the previously-
+      hardcoded `--mode fp32` exporter subprocess call.
+      - **ResNet-50**: quantized 102MB->26.3MB (25.8%, matching the 4x
+        expectation once the ~4 bookkeeping-op differences between the
+        float/int8 TFLite graphs are accounted for). Verified genuinely
+        int8 (not boundary-only) via direct tensor-dtype inspection: 130
+        int8 tensors, 57 int32 (standard TFLite bias convention, not
+        COSMA-tracked anyway), 0 float32. Full `run_paper_baselines.py`
+        pipeline clean at `M_R`=2352KB, `Optimal` on all 3 combos.
+      - **DenseNet-121**: tracked-tensor byte ratio 0.248x FP32 (very
+        close to ideal 0.25x). Full pipeline clean at `M_R`=1596.25KB,
+        `Optimal` on all 3 combos, real nonzero non-compulsory bytes
+        (2,609,152) tying across all 3 combos at this exact budget.
+      - **R2Plus1D-18: attempted, genuinely blocked, not a shortcut.**
+        TFLite's `CONV_3D` builtin has no real INT8 kernel in the standard
+        `onnx2tf`/`TFLiteConverter` toolchain. `onnx2tf -oiqt` *completes
+        without error* and LOOKS like a valid INT8 export, but direct
+        tensor-dtype inspection shows only 82 of 230 tensors are actually
+        `int8` (input/output boundary only) -- the rest, including the
+        CONV_3D weights, stay `float32` (quantize/dequantize wrapping at
+        the boundary, float compute internally). Independently confirmed
+        by file size: 125.3MB vs. the float32 export's 125.9MB (~0.5%
+        smaller, not ~75%). Two real engineering issues were found and
+        fixed along the way before concluding this (calibration array
+        needs `onnx2tf`'s internal NTHWC layout, not raw ONNX NCTHW;
+        `-cind`'s mean/std args are mandatory once a custom calibration
+        path is used) -- ruled out as calibration mistakes, not just
+        given up on early. R2Plus1D-18 stays FP32 per explicit project
+        decision; documented in `paper_model_roster.md`'s row rather than
+        silently left inconsistent with the other two models.
+    - **`free_schedule=True` plumbing added to the paper-comparison
+      scripts** (the ILP code path itself was already fully implemented
+      and validated on small fixtures -- item 32 above -- this was pure
+      wiring). Rereading the paper's §V-C confirmed the Fixed-Schedule
+      (FS) mode this project had been running by default under the plain
+      name "COSMA" is actually the paper's own separate, weaker heuristic
+      used *only* for the 4 NAS models when the full joint ILP times out
+      -- for the human-designed models (ResNet-50, DenseNet, R2Plus1D --
+      exactly this project's own model set), the paper's Fig.3 "COSMA"
+      bars are the full joint schedule+allocation+replacement
+      optimization. `run_paper_baselines.py` gained a `free_schedule`
+      parameter (threaded into the `cosma_native` row's
+      `run_cosma.run_cosma()` call) and a `--free-schedule` CLI flag,
+      default off so every previously-recorded result stays reproducible.
+      `run_paper_roster.py` forwards the same flag through its subprocess
+      `cmd` list. **Regression-verified**: `--free-schedule` on
+      ResNet-20-CIFAR10 @192KB via the new CLI flag reproduces item 32's
+      already-recorded free-schedule numbers exactly (`Optimal`, 0
+      non-compulsory bytes, 96.79% DRAM reduction, 11.4052x speedup,
+      byte-identical to the fixed-schedule result too) -- confirms the
+      plumbing itself, not just the underlying ILP code (already proven).
+      Still not yet run at ResNet-50/DenseNet-121 scale -- per item 32's
+      own note and `build_cosma_model()`'s O(|T|x|A|^2) warning, expect a
+      real jump; try ResNet-50 (75 tensors, smallest of the two) before
+      DenseNet-121 (311 tensors, already the hardest fixed-schedule
+      instance in this project).
+    - Full plan: `/home/george/.claude/plans/curious-yawning-owl.md`.
+
+35. **Sourced 3 more of the paper's own models: ResNeXt, S3D, FCN** (user
+    request: "let's do all 3"). Each needed real new engineering in
+    `trim/python_scripts/lib/exporter_core.py`/`export_pipeline.py`, not
+    just a re-export — full detail in `docs/paper_model_roster.md`'s rows,
+    summarized here:
+    - **ResNeXt-50** (`resnext50_32x4d`): `infer_conv2d_axes()` couldn't
+      handle a grouped conv's weight tensor at all (TFLite's `CONV_2D` has
+      no explicit "groups" field in its FlatBuffer schema -- the runtime
+      infers grouping implicitly from the weight's in-channel axis being
+      smaller than the real input channel count; the exporter now mirrors
+      that inference and returns `groups` as a 3rd value, threaded into
+      `params['groups']` -- exactly what `topology_builder.py`'s existing
+      `channels = in_shape[3] // groups` branch already expected but never
+      actually received from a real model until now). Also added `PADV2`
+      (TFLite builtin 60) to the typemap, mapped to the same "PAD" handling
+      as plain `PAD`. **Real, non-degenerate result**: both baseline combos
+      fail outright (`TfliteArenaAllocationError`, fragmentation) at `M_R`
+      while COSMA solves `Optimal` (85.58% DRAM reduction, 2.8625x
+      speedup) -- the paper's whole point, reproduced on a new model.
+    - **S3D**: reused CONV_3D infrastructure unchanged, but TFLite has no
+      native `MAX_POOL_3D`/`AVERAGE_POOL_3D` builtin at all, so `onnx2tf`
+      emits `FlexMaxPool3D`/`FlexAvgPool3D` *custom* ops (all TFLite CUSTOM
+      ops share numeric code 32 -- real identity is the string
+      `CustomCode()`, needing a second, string-keyed dispatch table,
+      `exporter_core.CUSTOM_OP_TYPEMAP`, checked only when
+      `BuiltinCode()==CUSTOM`). Mapped to new `MAXPOOL_3D`/`AVGPOOL_3D`
+      types, deliberately left out of `enforce_complete_metadata()`'s
+      `required` dict and `infer_pool_kernel_if_missing()`'s exact-string
+      check (both 2D-only) -- these pass through as generic, shape-tracked
+      layers, same as `PAD`/`ADD`, sufficient since COSMA's own non-conv
+      costing is already shape-generic. Full pipeline clean, `Optimal`,
+      98.7% reduction, 3.99x speedup (degenerate `M_R`==MPMF case, same
+      pattern as ResNet-50).
+    - **FCN**: needed `RESIZE_BILINEAR` (TFLite builtin 23) added to the
+      typemap -- FCN's (and DeepLabV3's) decoder upsampling emits this op;
+      it was simply never recognized before. No weights/required params
+      needed (target H/W comes from a second constant input tensor, same
+      treatment as PAD). **This is the exact same op code that separately
+      blocks DeepLabV3** (`builtin_code_23`, documented in
+      `paper_model_roster.md` since 2026-09-29) -- that blocker is very
+      likely resolved as a side effect, not yet re-tested. Exported cleanly
+      (76 layers), `M_R`/MPMF bounds computed correctly, but **the full
+      `run_paper_baselines.py` pipeline run was stopped before completing**:
+      FCN's ResNet-50 backbone keeps dilated (atrous) convolutions in
+      `layer3`/`layer4` instead of downsampling (standard for dense
+      per-pixel prediction), so those bottleneck blocks simulate at 28x28
+      instead of 7x7 -- SCALE-Sim's cycle-accurate per-layer cost scales
+      with operand-matrix size (already documented as slow on plain
+      full-resolution ResNet-50, item 11), and dilation makes this
+      materially worse. Available memory dropped from ~5GB to ~400MB
+      (swap climbing to 3.6GB) over 1040+ seconds of the baseline pass
+      alone, with no result yet -- killed as a precaution before it
+      became a repeat of this session's earlier documented crash
+      incident, not because of any correctness problem. A real
+      SCALE-Sim-speed limitation, not a COSMA/exporter bug (same
+      conclusion as item 11).
+    - **Found and fixed an unrelated `onnx2tf` bug along the way**:
+      `download_test_image_data()` (used internally regardless of
+      `-cotof`/strict-mode flags) unconditionally fetches a calibration
+      image from a GitHub release URL that now 404s (upstream asset
+      removed/renamed) -- the function doesn't check the HTTP status
+      before trying to parse the 9-byte "Not Found" response body as a
+      pickle-free `.npy`, producing a confusing
+      `ValueError: Cannot load file containing pickled data` that (due to
+      stdout/stderr buffering under output redirection) *looked* like an
+      unrelated silent crash deep in per-node graph conversion before the
+      real cause was isolated via `faulthandler` + a direct Python-API
+      call with explicit exception handling. Workaround (not a trim/COSMA
+      code change): pre-place a synthetic
+      `calibration_image_sample_data_20x128x128x3_float32.npy` in the
+      working directory before invoking `onnx2tf`, so its
+      `os.path.isfile()` check finds it locally and the broken download
+      is never attempted.
+    - Regression safety: all 39 `trim` unit tests pass after every change
+      (2 new tests added for grouped-conv axis inference), and none of
+      today's earlier fixed-schedule/free-schedule/INT8 work was touched.
+
+36. **Input-shape audit against the paper's Fig.3 caption** (user question:
+    "do we have the same inputs for each model") found two real bugs, and a
+    separate DenseNet architecture-identity question, all now documented
+    in `paper_model_roster.md`'s per-model rows:
+    - **R2Plus1D-18's export never actually matched the paper.** Its
+      `model.json` (from an earlier session, used for every result
+      documented until today) has input shape `[1,8,112,112,3]` — half the
+      frames, half the resolution of the paper's stated
+      `(1,3,16,224,224)`. Re-exported at the correct `[1,16,224,224,3]`
+      (fresh PyTorch→ONNX→`onnx2tf`→`trim` pipeline) — real bounds now
+      `M_R`=225792.00KB, `MPMF`=275968.00KB (8x the old scale, matching
+      2x frames × 4x spatial exactly). The old 25,690,112-byte/92.7%/3.29x
+      result is superseded and no longer valid for paper comparison.
+      **Both a full 4-baseline comparison AND the lighter single-pass
+      `run_cosma.py` were attempted at the correct resolution and both
+      killed as a memory-safety precaution** (~900MB/~470MB available
+      after 40-50 min each) — same SCALE-Sim performance wall as FCN/
+      DeepLabV3 (item 35), now confirmed independent of pass count (1 vs
+      5): it's the per-layer tensor size at this resolution, not the
+      number of SCALE-Sim invocations. No real R2Plus1D-18 number exists
+      at the paper's actual input scale as of this entry.
+    - **DeepLabV3's externally-sourced `.tflite` uses input `[1,513,513,3]`**,
+      not the paper's `(1,3,224,224)` — the standard DeepLabV3+ Pascal-VOC
+      convention, 5.3x more spatial positions. Left as-is (documented,
+      not fixed) since a real fix means re-sourcing from torchvision like
+      FCN/ResNeXt/S3D, not attempted this session.
+    - **DenseNet architecture identity, genuinely ambiguous.** The paper's
+      own text cites "DenseNet [13]" where reference [13] is Jégou et al.'s
+      "The One Hundred Layers Tiramisu: Fully Convolutional DenseNets for
+      Semantic Segmentation" (CVPR 2017) — a segmentation-only, U-Net-style
+      encoder-decoder built from DenseNet's dense-block unit, not the
+      original Huang et al. classification DenseNet `tf.keras.applications`
+      already uses here. Most likely a citation slip (DenseNet is grouped
+      under "image classification" alongside ResNet-50/ResNeXt in the same
+      sentence that separately lists FCN/L-RASPP/DeepLabV3 under "semantic
+      segmentation" — filing Tiramisu, itself segmentation-only, under
+      classification would be an odd, internally inconsistent choice), but
+      not resolvable from the text alone. Our `DenseNet-121` stays a
+      defensible choice, just not a confirmed 1:1 match.
+    - **Resolved a standing open question from 2026-09-10** (§4 of
+      `paper_model_roster.md`, "all 5 schemes tied at 0 bytes at ~M_P for
+      ResNet-50, contradicting the paper's FCN-only exception claim"): by
+      now testing 8 model/precision combinations, confirmed **ResNet-50
+      (FP32+INT8), S3D, FCN, and DeepLabV3 all have `M_R` == `MPMF`
+      exactly** (not just "close") — for these, there is no budget range
+      below `M_P` at all, so testing at `M_R` (this project's default)
+      automatically tests at `M_P` too, and all 5 schemes tying at 0 is
+      the structurally-correct outcome, not a contradiction of the paper's
+      FCN-exception claim (which only constrains models with a real gap).
+      **ResNeXt-50, DenseNet-121 (both precisions), and R2Plus1D-18 all
+      have a real, nontrivial `M_R` != `MPMF` gap** and were correctly
+      tested *at* `M_R`, not `M_P` — the "ties at 0" pattern does not
+      apply to them (confirmed: ResNeXt-50's baselines fail outright at
+      `M_R`, DenseNet-121 shows real nonzero spill at `M_R`). None of
+      these three has been tested *at* its own `MPMF`/`M_P` yet, which
+      would be the direct way to confirm the paper's two-part claim
+      (COSMA=0, baselines nonzero since none is FCN) on a real,
+      non-degenerate model — the natural next test.
+
+37. **Ran that next test**: ResNeXt-50 @ `MPMF`=9636KB and DenseNet-121
+    (INT8) @ `MPMF`=2058.00KB, both real non-degenerate models (item 36's
+    open item). Both confirm the paper's §V-B.2 two-part claim, in a
+    *stronger* form than the paper's own text: COSMA hits the guaranteed
+    0 bytes on both (`Optimal`, 87.32%/3.0019x on ResNeXt-50,
+    97.53%/18.3223x on DenseNet-121-INT8); the 4-baseline schemes don't
+    just "incur non-compulsory data accesses" as the paper's text puts it
+    (implying suboptimal-but-successful placement) — on both models they
+    fail to place tensors *at all* (`TfliteArenaAllocationError`,
+    fragmentation), even with a theoretically-sufficient total budget.
+    Two independent, real models now confirm the same pattern. Results
+    folded into both models' own rows in `paper_model_roster.md`.

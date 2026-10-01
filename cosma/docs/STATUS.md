@@ -50,9 +50,50 @@ paper's own (§V-A budgets/metrics/models), see `results_plan.md`.
 - **Operator scheduling for the main (spill/retrieve) pipeline is now implemented** (`build_cosma_model(..., free_schedule=True)`, opt-in, default off) but only exercised so far on: both toy fixtures, the small custom DenseNet fixture, and ResNet-20-CIFAR10 — see Validation methodology above. Not yet run: Inception-V3/ResNet-50/DenseNet-121 (expect the same kind of solve-time jump the fixed-schedule pipeline already hit on DenseNet-121 — this is exactly the paper's own `O(|T|x|A|^2)` worst case, now combined with the full placement machinery rather than the isolated `M_P` model's lighter one). The one real data point on solve difficulty (the adversarial `toy_branching_model.json` fixture) suggests graphs where the ASAP/ALAP pair-filter can't prune much (wide branching, tight liveness overlap) will be considerably harder than the mostly-linear-chain real models tested so far.
 - **Divide-and-conquer heuristic for NAS-scale graphs** (§IV) — not implemented, out of scope from the start of this work.
 - **Gurobi** — using PuLP/CBC instead (same ILP semantics, meaningfully slower at scale: 178s vs. the paper's ~0.3s average on Inception-V3-sized problems).
-- **The paper's own comparison baselines** — TensorFlow-Lite's linear allocator × {default, MPMF schedule} × {Belady, greedy replacement}. Not implemented; our current baseline (SCALE-Sim's own default per-layer buffers) is a different, weaker comparison, so our % reduction numbers are not the same measurement as the paper's 84%/85%. Kept as open future work, not permanently closed (see `results_plan.md`).
+- ~~**The paper's own comparison baselines**... Not implemented~~ **Done and verified, now run on real ImageNet-scale models (2026-09-30)** — TensorFlow-Lite's linear allocator × {default, MPMF schedule} × {Belady, greedy replacement} (`run_paper_baselines.py`), run against ResNeXt-50/DenseNet-121 (both precisions)/S3D. Both baselines fail outright (fragmentation) on ResNeXt-50/DenseNet-121 at both `M_R` and `M_P`. See `results_plan.md` §4.
 - **`M_P`/`M_H` at production scale** — implemented and verified correct on 6 models (see above), but Inception-V3/ResNet-50/DenseNet-121 haven't been run through the real (slower) scheduling ILP yet — expect the same kind of solve-time jump the main pipeline already hit on DenseNet-121.
 - **Activation+parameter tensor tracking** (the paper's other evaluation setting besides activation-only) — not implemented, and not a trivial flag: weight tensors don't fit the existing Create/Preserve/Spill/Retrieve model the way activations do, since an activation's `'C'` is legitimately free (computed on-chip) but a weight's first appearance never is (always a real DRAM fetch). See `results_plan.md` §6.
 - **No NAS-style / wide-parallel-branch model tested** — the 5 original real models are human-designed, mostly-linear-chain CNNs, exactly the class the paper itself says scheduling matters least for. We've never tested a graph shaped like the ones (DARTS, PNASNet, etc.) where the missing scheduling piece would actually be expected to bite.
-- **Real-model spill/retrieve evidence at production scale** — mechanically implemented and verified correct on the synthetic toy fixture and a small custom-built DenseNet (18 conv layers, real SCALE-Sim run, genuine spill/retrieve with a measurable — and here, net-negative — speedup effect); the full ImageNet-scale DenseNet-121 (the one production-scale model with a real `M_R != MPMF` gap) has never been run to completion (see `results_plan.md` §7).
+- **Real-model spill/retrieve evidence at production scale** — mechanically implemented and verified correct on the synthetic toy fixture and a small custom-built DenseNet (18 conv layers, real SCALE-Sim run, genuine spill/retrieve with a measurable — and here, net-negative — speedup effect). ~~the full ImageNet-scale DenseNet-121... has never been run to completion~~ **Has now been run multiple times** (@ `M_H`, both before and after a real Eq.9 formulation fix) — remains `Not Solved` with COSMA's own incumbent worse than the ILP-greedy baseline there, now understood as an inherent Eq.10 big-M weak-relaxation property of the paper's own formulation at this graph's scale (311 tensors, liveness spans up to 121 timesteps), not a bug — see `results_plan.md` §6 item 7. ResNeXt-50 and DenseNet-121 (INT8) **do** have real, `Optimal`, production-scale spill/retrieve results at both `M_R` and `M_P` (2026-09-30) — see `results_plan.md` §4.
+
+## 2026-09-30 update
+
+A large batch of real engineering, not just bookkeeping — full detail in
+`ITERATION_HISTORY.md` items 34-37, `paper_model_roster.md`'s per-model
+rows, and `results_plan.md` §4/§6:
+
+- **Eq.9 formulation bug found and fixed** in `cosma_Ilp.py` (a non-paper
+  residency gate was making the budget constraint vacuous when not
+  resident) — correct and paper-faithful, verified byte-identical on 2
+  regression fixtures, but did **not** fix DenseNet-121's solve difficulty
+  (that's Eq.10, inherent to the paper's own formulation at this scale).
+- **INT8 datatype parity** (the paper's own evaluation setting, "all data
+  are 8-bit") implemented for ResNet-50 and DenseNet-121 via a new
+  `cosma/tools/quantize_model.py` — genuinely verified int8 throughout
+  (not a boundary-only fallback). R2Plus1D-18 confirmed blocked (`CONV_3D`
+  has no real INT8 kernel in the standard toolchain) — stays FP32.
+- **3 new models sourced**: ResNeXt-50, S3D, FCN — each needed real new
+  exporter engineering in the separate `trim/` repo (grouped-conv axis
+  inference + `PADV2`; `MAXPOOL_3D`/`AVGPOOL_3D` custom-op dispatch;
+  `RESIZE_BILINEAR`). DeepLabV3 unblocked as a side effect of the last fix
+  (input resolution doesn't match the paper, though — `[1,513,513,3]` vs.
+  `(1,3,224,224)`).
+- **Real, non-degenerate results on 2 real models at both `M_R` and their
+  own `M_P`**: ResNeXt-50 and DenseNet-121 (INT8) both confirm the
+  paper's §V-B.2 claim (COSMA=0 at `M_P`, baselines nonzero except FCN) —
+  in a stronger form than the paper's own text: both baselines fail to
+  place tensors *at all* on both models, not just spill more than COSMA.
+- **R2Plus1D-18 had a real input-resolution bug** (`[1,8,112,112,3]`
+  instead of the paper's `[1,16,224,224,3]`) in every prior result for it
+  — found and fixed; the old numbers are superseded.
+- **A real, now-3-for-3-confirmed SCALE-Sim performance wall** on
+  large-tensor models (FCN, DeepLabV3, R2Plus1D-18 at its correct
+  resolution) — each killed as a memory-safety precaution on this 7GB
+  machine after 40+ minutes with no result. Not yet root-caused. The
+  primary open item for a more powerful machine to pick up — see
+  `run_paper_roster.py`'s updated, now-accurate roster.
+- Two separate git repos involved (`SCALE-Sim` here, `trim/` for the
+  exporter) — neither committed yet as of this update; `cosma/_exported/`
+  is gitignored and needs a separate transfer (not git) to another
+  machine.
 

@@ -62,7 +62,7 @@ DEFAULT_CONFIG = os.path.join(os.path.dirname(HERE), 'configs', 'scale.cfg')
 DEFAULT_RESULTS_DIR = os.path.join(HERE, 'results')
 DEFAULT_LOGS_DIR = os.path.join(HERE, 'logs')
 
-CONV_LIKE_OPS = ('CONV2D', 'DEPTHWISE_CONV2D', 'DENSE')  # DENSE: 1x1-conv row, see topology_builder.py
+CONV_LIKE_OPS = ('CONV2D', 'DEPTHWISE_CONV2D', 'CONV_3D', 'DENSE')  # DENSE: 1x1-conv row, see topology_builder.py
 
 POLICY_FNS = {
     'belady': belady_policy.choose_victims,
@@ -339,7 +339,9 @@ def run_all_paper_baselines(model_json_path: str, config_path: str = DEFAULT_CON
                              export_dir: str = model_resolver.DEFAULT_EXPORT_DIR,
                              force_export: bool = False,
                              verbose: bool = True,
-                             save_plots: bool = True) -> dict:
+                             save_plots: bool = True,
+                             schedules: tuple = ('default', 'mpmf'),
+                             free_schedule: bool = False) -> dict:
     """
     Loads the graph once, computes layer_stats via baseline.run_baseline()
     once (schedule-independent -- reused across all combinations below,
@@ -371,8 +373,34 @@ def run_all_paper_baselines(model_json_path: str, config_path: str = DEFAULT_CON
     intentionally stay on their own separate, much shorter default (see
     that argument's own docstring).
 
-    Returns {'default+belady', 'default+ilp_greedy', 'mpmf+belady',
-    'mpmf+ilp_greedy'[, 'cosma_native']: summary dict (or
+    schedules: which schedule variant(s) to run combos for -- default
+    ('default', 'mpmf') is the paper's full 2x2 factorization (all 4
+    combos). Pass ('default',) alone to skip the MPMF schedule entirely --
+    this also skips its real ILP solve (cosma_Ilp.compute_true_mpmf_bytes())
+    below, not just the combos that would have used it. Added because that
+    solve is the same O(|T|x|A|^2) problem that makes true-M_P slow on
+    large models (confirmed 2026-09-29: it ran 30+ min on ResNet-50 alone,
+    a model whose *fixed*-schedule ILP solves in 0.4s -- M_R == MPMF-proxy
+    for ResNet-50, so the real MPMF schedule can only ever reproduce the
+    default one here, making that whole solve provably wasted work for
+    this model specifically, though not in general).
+
+    free_schedule: forwarded to run_cosma.run_cosma() for the cosma_native
+    row only (the 4 comparison combos above use schedule_variants.py's own
+    default/MPMF schedules regardless -- those are the paper's own
+    "Operator Scheduling" comparison axis, not COSMA's ILP). False
+    (default) reproduces every previously-recorded cosma_native result
+    byte-for-byte. True makes COSMA's own operator order a real ILP
+    decision (the paper's full joint optimization, matching what the
+    paper's own Fig.3 "COSMA" bars actually are for these human-designed
+    models -- see docs/results_plan.md) instead of the Fixed-Schedule (FS)
+    sub-problem this project ran under that name until now. Expect a real
+    solve-time jump (cosma_Ilp.build_cosma_model()'s own docstring: "the
+    paper's own documented O(|T|x|A|^2) worst case") -- never validated at
+    ResNet-50/DenseNet-121 scale before enabling this here.
+
+    Returns {'default+belady', 'default+ilp_greedy'[, 'mpmf+belady',
+    'mpmf+ilp_greedy'][, 'cosma_native']: summary dict (or
     {'status': 'ERROR', 'error': str} on failure)}.
     """
     model_json_path = model_resolver.resolve_model_json(
@@ -403,24 +431,26 @@ def run_all_paper_baselines(model_json_path: str, config_path: str = DEFAULT_CON
         heartbeat_stop.set()
 
     default_sched = schedule_variants.default_operator_schedule(nodes)
-    if verbose:
-        print("Solving MPMF schedule ILP (cosma_Ilp.compute_true_mpmf_bytes) ...")
-    # msg=verbose surfaces Gurobi/CBC's own native solve log -- this is a
-    # real, potentially slow ILP solve (see compute_true_mpmf_bytes()'s
-    # own docstring), untested at DenseNet-121/ImageNet scale through
-    # this file before, so a heartbeat covers it too in case the solver
-    # itself goes quiet for a while (e.g. during presolve).
-    heartbeat_stop = _start_heartbeat("MPMF schedule ILP solve")
-    try:
-        _, mpmf_tensor_sched = cosma_Ilp.compute_true_mpmf_bytes(
-            nodes, tensors, time_limit_sec=ilp_time_limit_sec, solver=solver, msg=verbose)
-    finally:
-        heartbeat_stop.set()
-    mpmf_sched = schedule_variants.mpmf_operator_schedule(nodes, tensors, mpmf_tensor_sched)
+    sched_variants = {'default': default_sched}
+    if 'mpmf' in schedules:
+        if verbose:
+            print("Solving MPMF schedule ILP (cosma_Ilp.compute_true_mpmf_bytes) ...")
+        # msg=verbose surfaces Gurobi/CBC's own native solve log -- this is a
+        # real, potentially slow ILP solve (see compute_true_mpmf_bytes()'s
+        # own docstring), untested at DenseNet-121/ImageNet scale through
+        # this file before, so a heartbeat covers it too in case the solver
+        # itself goes quiet for a while (e.g. during presolve).
+        heartbeat_stop = _start_heartbeat("MPMF schedule ILP solve")
+        try:
+            _, mpmf_tensor_sched = cosma_Ilp.compute_true_mpmf_bytes(
+                nodes, tensors, time_limit_sec=ilp_time_limit_sec, solver=solver, msg=verbose)
+        finally:
+            heartbeat_stop.set()
+        sched_variants['mpmf'] = schedule_variants.mpmf_operator_schedule(
+            nodes, tensors, mpmf_tensor_sched)
 
-    schedules = {'default': default_sched, 'mpmf': mpmf_sched}
     results = {}
-    for sched_name, sched in schedules.items():
+    for sched_name, sched in sched_variants.items():
         for policy_name, policy_fn in POLICY_FNS.items():
             combo = f"{sched_name}+{policy_name}"
             if verbose:
@@ -454,9 +484,9 @@ def run_all_paper_baselines(model_json_path: str, config_path: str = DEFAULT_CON
         try:
             # plot_out_path override so this plot is tagged 'cosma_native'
             # like its 4 sibling combos' plots, instead of run_cosma.py's
-            # own generic 'S'/'D' schedule tag (this file never exposes
-            # free_schedule, so it'd always be 'S' -- less identifiable
-            # sitting next to 'default+belady' etc. in the same directory).
+            # own generic 'S'/'D' schedule tag -- more identifiable sitting
+            # next to 'default+belady' etc. in the same directory regardless
+            # of which schedule mode cosma_native itself used.
             cosma_native_plot_path = (
                 visualize_spm.default_out_path(
                     model_json_path, memory_budget_bytes,
@@ -468,7 +498,8 @@ def run_all_paper_baselines(model_json_path: str, config_path: str = DEFAULT_CON
                 bandwidth_bytes_per_cycle=bandwidth_bytes_per_cycle,
                 ilp_time_limit_sec=ilp_time_limit_sec,
                 verbose=verbose, save_plot=save_plots,
-                plot_out_path=cosma_native_plot_path, solver=solver)
+                plot_out_path=cosma_native_plot_path, solver=solver,
+                free_schedule=free_schedule)
             if verbose:
                 r = results['cosma_native']
                 print(f"  non-compulsory bytes: {r['total_non_compulsory_access_bytes']}, "
@@ -532,9 +563,32 @@ if __name__ == '__main__':
                               'ILP-greedy replacement policy solve. Default: 10.')
     parser.add_argument('--solver', choices=['cbc', 'gurobi'], default='gurobi',
                          help='ILP solver for the MPMF schedule and ILP-greedy replacement '
-                              '(default: cbc, no license needed). See cosma_Ilp.solve().')
+                              '(default: gurobi -- corrected 2026-09-29, this help text used '
+                              'to say cbc while the code default was already gurobi). Falls '
+                              'back to --solver cbc where no Gurobi license is available.')
+    parser.add_argument('--schedules', choices=['default', 'mpmf', 'both'], default='both',
+                         help="Which schedule variant(s) to run (default: both -- the paper's "
+                              "full 2x2 factorization, all 4 combos). 'default' skips the MPMF "
+                              "schedule AND its real free-schedule ILP solve entirely -- use "
+                              "this to avoid that solve's real cost (confirmed 2026-09-29: 30+ "
+                              "min on ResNet-50 alone, whose *fixed*-schedule solve takes "
+                              "0.4s) when you only need the cheap default-schedule combos, or "
+                              "on a model where M_R==MPMF-proxy already (see --bounds-only) so "
+                              "the real MPMF schedule can only reproduce the default one.")
     parser.add_argument('--no-cosma-native', action='store_true',
                          help="Skip the COSMA-native comparison row (run_cosma.run_cosma()).")
+    parser.add_argument('--free-schedule', action='store_true',
+                         help="Let the cosma_native row's own ILP choose the operator schedule "
+                              "itself (the paper's full joint optimization), instead of fixing "
+                              "it to model.json's topological order. Off by default, matching "
+                              "every previously-recorded cosma_native result. This is what the "
+                              "paper's own Fig.3 'COSMA' bars actually are for the human-designed "
+                              "models (ResNet-50, DenseNet, R2Plus1D) -- the Fixed-Schedule (FS) "
+                              "mode this file ran under that name until now is the paper's "
+                              "separate, weaker NAS-only heuristic. Expect a real solve-time "
+                              "jump (see cosma_Ilp.build_cosma_model()'s free_schedule "
+                              "docstring) -- never validated at ResNet-50/DenseNet-121 scale "
+                              "before this flag existed.")
     parser.add_argument('--no-plots', action='store_true',
                          help="Skip saving each combination's baseline-vs-plan occupancy PNG "
                               "(saved to cosma/spm_plots/ by default, one per (budget, combo)).")
@@ -573,7 +627,10 @@ if __name__ == '__main__':
                     ilp_greedy_time_limit_sec=args.ilp_greedy_time_limit,
                     solver=args.solver, exporter=args.exporter, export_dir=args.export_dir,
                     force_export=args.force_export, verbose=True,
-                    save_plots=not args.no_plots)
+                    save_plots=not args.no_plots,
+                    schedules=(('default', 'mpmf') if args.schedules == 'both'
+                               else (args.schedules,)),
+                    free_schedule=args.free_schedule)
                 print_comparison_table(results, budget_kb)
                 for combo, r in results.items():
                     all_rows.append({
