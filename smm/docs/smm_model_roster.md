@@ -9,11 +9,12 @@ against `cosma/_exported/` on 2026-09-16.
 "Scratchpad Memory Management for Deep Learning Accelerators." ICPP '24.
 https://doi.org/10.1145/3673038.3673115
 
-**Not yet ported to this branch** — `smm_policy_selector.py` (the ported policy-selection logic,
-Intra/P1-P5) and `smm_scalesim_runner.py` (the SCALE-Sim driver) currently live on the `sim-opt`
-branch, as loose top-level files, not under a `smm/` directory the way COSMA/OnSRAM are organized
-here. This roster only tracks model *availability* ahead of that port — it doesn't imply the
-implementation exists on this branch yet.
+**Ported (2026-10-02)** — policy-selection logic and the SCALE-Sim driver now live under
+`smm/smm_helpers/` (`policy_selector.py`, `scale_sim_runner.py`, `baseline.py`), matching
+COSMA/OnSRAM's layout, with a real-SCALE-Sim fidelity fix (`scalesim/memory/smm_reuse_buffers.py`)
+validated against ResNet18 — see `smm/docs/smm_verification.md` for the full writeup. Entry point:
+`smm/run_smm.py`. This roster still only tracks model *availability*, not which models have
+actually been run end-to-end yet (only ResNet18 has, so far).
 
 ## 1. Paper's own roster (Table 2)
 
