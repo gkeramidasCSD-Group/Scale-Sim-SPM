@@ -48,12 +48,28 @@ heuristic):
      via best-fit: the smallest gap that's still big enough, falling back
      to the running high-water mark if none fits.
 
-Disclosed simplifications vs. real TFLite (both low-impact, and consistent
-with what the rest of this codebase already does/doesn't model): no byte
-alignment (this codebase has never modeled alignment anywhere -- neither
-SpmAllocator nor cosma_Ilp.py's Eq.9-11 do either); no in-place/aliasing
-buffer sharing (TFLite's IdentifyInPlaceTensors() has no analog in
-graph_builder.py's tensor abstraction).
+Byte alignment: modeled, added 2026-10-02. Real TFLite aligns every
+tensor's placement offset to _TENSOR_ALIGNMENT bytes (SimpleMemoryArena::
+Allocate()'s alignment parameter, which subgraph.cc passes as
+kDefaultTensorAlignment, tensorflow/lite/util.h -- 64 bytes, confirmed
+directly against that header). Previously unmodeled here ("no byte
+alignment... low-impact"), which looked reasonable in isolation but turned
+out to matter a lot for any model where M_R == MPMF exactly (no spare
+budget at all): at zero slack, even a few bytes of alignment padding on
+one tensor is enough to make the real, alignment-respecting allocator
+spill something our old byte-exact (unaligned) port never needed to --
+found by comparing this project's own ResNet-50/DeepLabV3/S3D results
+(all three: every scheme ties at 0 bytes) against the COSMA paper's own
+Fig. 3, which shows a large, consistent gap for these same three models
+(baselines clearly nonzero, COSMA ~0) at every activation-only budget.
+`_best_fit_gap()` now ports Allocate()'s exact gap-scan, alignment
+included -- see that function's docstring for the line-by-line mapping.
+
+Disclosed simplification still present vs. real TFLite (low-impact, and
+consistent with what the rest of this codebase already does/doesn't
+model): no in-place/aliasing buffer sharing (TFLite's
+IdentifyInPlaceTensors() has no analog in graph_builder.py's tensor
+abstraction).
 
 Decoupling note: deliberately does NOT import spm_allocator.py's private
 (leading-underscore) _lowest_fit_address()/_residency_episodes() helpers --
@@ -89,6 +105,22 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from spm_common.spm_allocator import SpmAllocator
+
+# tensorflow/lite/util.h's kDefaultTensorAlignment, confirmed directly
+# against that header (github.com/tensorflow/tensorflow, 2026-10-02):
+# "constexpr const int kDefaultArenaAlignment = 64;" (arena_planner.h) and
+# subgraph.cc:1607's ArenaPlanner construction passes kDefaultTensorAlignment
+# (util.h, also 64) as the per-tensor alignment SimpleMemoryArena::Allocate()
+# aligns every placement offset to.
+_TENSOR_ALIGNMENT = 64
+
+
+def _align_up(offset: int, alignment: int) -> int:
+    """Smallest multiple of `alignment` that is >= `offset`. Port of
+    simple_memory_arena.cc's CheckedAlignTo() (the overflow-checked variant
+    isn't needed here -- Python ints don't overflow)."""
+    remainder = offset % alignment
+    return offset if remainder == 0 else offset + (alignment - remainder)
 
 
 class TfliteArenaAllocationError(RuntimeError):
@@ -140,18 +172,32 @@ def _best_fit_gap(conflicting_sorted_by_addr: List[Tuple[int, int]], size: int) 
     return the address of the SMALLEST gap that's still big enough
     (best-fit), or the running high-water mark (cursor) if none fits.
     `conflicting_sorted_by_addr` must already be sorted by address.
+
+    Alignment, ported exactly (including one TFLite quirk kept on purpose
+    for fidelity): the candidate offset returned for a gap is the
+    alignment-rounded-up cursor (`aligned_cursor`), but the "is this gap
+    better than the best one so far" comparison uses the *unaligned*
+    `addr - cursor` difference, not `addr - aligned_cursor` -- exactly
+    what simple_memory_arena.cc's Allocate() does (`best_offset_fit =
+    alloc.offset - current_offset`, computed from the unaligned
+    `current_offset`, right after `best_offset` itself was set from the
+    aligned one). Not obviously the "more correct" metric, but this is a
+    faithfulness port, not a reimplementation -- replicating real TFLite's
+    actual selection behavior, quirks included, is the point.
     """
     best_offset = None
     best_fit = None
     cursor = 0
     for addr, sz in conflicting_sorted_by_addr:
-        gap = addr - cursor
-        if gap >= size and (best_fit is None or gap < best_fit):
-            best_offset, best_fit = cursor, gap
+        aligned_cursor = _align_up(cursor, _TENSOR_ALIGNMENT)
+        gap = addr - aligned_cursor
+        unaligned_fit = addr - cursor
+        if gap >= size and (best_fit is None or unaligned_fit < best_fit):
+            best_offset, best_fit = aligned_cursor, unaligned_fit
             if best_fit == 0:
                 break
         cursor = max(cursor, addr + sz)
-    return cursor if best_offset is None else best_offset
+    return _align_up(cursor, _TENSOR_ALIGNMENT) if best_offset is None else best_offset
 
 
 def place_tensors_linear(tensors: Dict[int, object],
@@ -233,12 +279,23 @@ if __name__ == '__main__':
             self.size_bytes = size_bytes
 
     # Case A: hand-verified against toy_spill_model.json's exact solved
-    # resident_action shape (budget=200, default schedule -- see
+    # resident_action shape (originally budget=200, default schedule -- see
     # replacement_engine.py's own __main__ for how this resident_action
     # gets produced for real; hardcoded here so this module is testable
     # standalone). Expected addresses hand-traced step by step (see
     # docs/baseline_construction.md's verification log) -- this is a real
     # regression assertion, not just a print.
+    #
+    # Budget bumped 200 -> 300 and addresses re-traced, 2026-10-02 (byte
+    # alignment added): at budget=200 this exact fixture now genuinely
+    # doesn't fit (tensor 12 lands at aligned address 128, needing
+    # [128,228), which overflows a 200-byte budget) -- a direct, minimal
+    # demonstration of the real effect being added here, not a fixture
+    # bug. New addresses hand-traced against _best_fit_gap()'s alignment
+    # logic (e.g. tensor 13 @ t=3: cursor reaches 10 after tensor 11's
+    # episode, aligns up to 64, finds a 64-byte gap before tensor 12's
+    # address-128 placement -- matches), then independently confirmed by
+    # running this exact code, not assumed from the hand-trace alone.
     tensors_a = {10: _T(10), 11: _T(100), 12: _T(100), 13: _T(10)}
     resident_action_a = {
         (10, 0): 'C', (10, 1): 'P',
@@ -249,14 +306,14 @@ if __name__ == '__main__':
     }
     expected_a = {
         (11, 1): 0, (11, 2): 0,
-        (12, 2): 100, (12, 3): 100,
-        (10, 0): 100, (10, 1): 100,
+        (12, 2): 128, (12, 3): 128,
+        (10, 0): 128, (10, 1): 128,
         (10, 3): 0,
-        (13, 3): 10,
+        (13, 3): 64,
     }
-    plan_a = place_tensors_linear(tensors_a, resident_action_a, 200)
+    plan_a = place_tensors_linear(tensors_a, resident_action_a, 300)
     assert plan_a == expected_a, f"Case A mismatch:\n  got:      {plan_a}\n  expected: {expected_a}"
-    print("Case A (toy_spill_model.json-shaped, budget=200): PASS, matches hand-derived addresses")
+    print("Case A (toy_spill_model.json-shaped, budget=300): PASS, matches hand-derived addresses")
     for (a, t), addr in sorted(plan_a.items(), key=lambda kv: (kv[0][1], kv[0][0])):
         print(f"  tensor {a} @ t={t}: address {addr}")
 
@@ -279,3 +336,19 @@ if __name__ == '__main__':
         raise AssertionError("Case B: expected TfliteArenaAllocationError, got none")
     except TfliteArenaAllocationError as e:
         print(f"Case B (3x100B mutually resident, budget=250): PASS, correctly raised: {e}")
+
+    # Case C: minimal, isolated demonstration of the 2026-10-02 alignment
+    # fix, independent of Case A's larger multi-episode trace. Two 10-byte
+    # tensors, mutually resident, nothing else involved. Without alignment
+    # these would pack back-to-back (addresses 0 and 10, 20 bytes total).
+    # With real TFLite's 64-byte offset alignment, the second tensor's
+    # candidate offset (10) isn't itself a multiple of 64, so it gets
+    # rounded up to 64 -- address 64, not 10. Budget 100 is large enough
+    # that this is a pure placement check, not a capacity failure (unlike
+    # Case A's budget=200, which genuinely failed under alignment).
+    tensors_c = {1: _T(10), 2: _T(10)}
+    resident_action_c = {(1, 0): 'C', (2, 0): 'C'}
+    expected_c = {(1, 0): 0, (2, 0): 64}
+    plan_c = place_tensors_linear(tensors_c, resident_action_c, 100)
+    assert plan_c == expected_c, f"Case C mismatch:\n  got:      {plan_c}\n  expected: {expected_c}"
+    print(f"Case C (2x10B mutually resident, budget=100): PASS, alignment padding visible: {plan_c}")
