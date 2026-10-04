@@ -1,0 +1,50 @@
+Sat Sep 26 17:05:20 2026    /data/grizos/Scale-Sim-SPM/benchmark/cprofile_compare/profiles/googlenet_a32_s32_user_optimized.pstats
+
+         604718187 function calls (604694163 primitive calls) in 413.757 seconds
+
+   Ordered by: internal time
+   List reduced from 573 to 40 due to restriction <40>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+      348  165.276    0.475  174.208    0.501 /data/grizos/Scale-Sim-SPM/venv/lib/python3.8/site-packages/numpy/lib/npyio.py:1375(savetxt)
+ 42688640   31.895    0.000   59.294    0.000 /data/grizos/Scale-Sim-SPM/scalesim/memory/write_buffer.py:126(store_to_trace_mat_cache)
+ 49556151   29.410    0.000   64.185    0.000 /data/grizos/Scale-Sim-SPM/scalesim/memory/read_buffer.py:236(active_buffer_hit)
+  3975958   29.266    0.000  107.398    0.000 /data/grizos/Scale-Sim-SPM/scalesim/memory/read_buffer.py:277(service_reads)
+       58   20.662    0.356  212.857    3.670 /data/grizos/Scale-Sim-SPM/scalesim/memory/double_buffered_scratchpad_mem.py:234(service_memory_requests)
+12933026/12909073   18.351    0.000  193.224    0.000 {built-in method numpy.core._multiarray_umath.implement_array_function}
+  1987979   16.897    0.000   78.825    0.000 /data/grizos/Scale-Sim-SPM/scalesim/memory/write_buffer.py:231(service_writes)
+204961710   15.729    0.000   15.729    0.000 /data/grizos/Scale-Sim-SPM/scalesim/memory/read_buffer.py:272(<genexpr>)
+      116   14.763    0.127   18.943    0.163 /data/grizos/Scale-Sim-SPM/scalesim/memory/read_buffer.py:177(prepare_hashed_buffer)
+ 49556270   11.312    0.000   24.654    0.000 {built-in method builtins.any}
+    23373    8.259    0.000    9.427    0.000 /data/grizos/Scale-Sim-SPM/scalesim/memory/read_buffer.py:453(new_prefetch)
+ 48720954    7.149    0.000    7.149    0.000 {method 'write' of '_io.TextIOWrapper' objects}
+ 49557577    6.900    0.000    6.900    0.000 {method 'get' of 'dict' objects}
+  5967149    5.322    0.000    5.322    0.000 {built-in method numpy.asarray}
+  8541427    4.418    0.000   16.127    0.000 /data/grizos/Scale-Sim-SPM/venv/lib/python3.8/site-packages/numpy/core/numeric.py:150(ones)
+  8555231    3.477    0.000    9.851    0.000 <__array_function__ internals>:177(copyto)
+ 11933776    3.266    0.000    3.266    0.000 {method 'reshape' of 'numpy.ndarray' objects}
+  8555596    2.043    0.000    2.043    0.000 {built-in method numpy.empty}
+  4320152    2.040    0.000   15.170    0.000 <__array_function__ internals>:177(concatenate)
+ 17462380    1.677    0.000    1.678    0.000 {method 'add' of 'set' objects}
+      700    1.632    0.002    1.632    0.002 {method 'close' of '_io.TextIOWrapper' objects}
+ 16886839    1.532    0.000    1.532    0.000 {method 'setdefault' of 'dict' objects}
+ 22962059    1.520    0.000    1.520    0.000 {method 'append' of 'list' objects}
+  2328853    1.356    0.000    1.356    0.000 {built-in method builtins.max}
+       58    1.161    0.020  237.240    4.090 /data/grizos/Scale-Sim-SPM/scalesim/single_layer_sim.py:186(run)
+       58    1.021    0.018    1.440    0.025 /data/grizos/Scale-Sim-SPM/scalesim/compute/systolic_compute_ws.py:127(create_ifmap_prefetch_mat)
+ 10401148    0.835    0.000    0.835    0.000 /data/grizos/Scale-Sim-SPM/scalesim/memory/read_buffer.py:274(<genexpr>)
+  8555231    0.729    0.000    0.729    0.000 /data/grizos/Scale-Sim-SPM/venv/lib/python3.8/site-packages/numpy/core/multiarray.py:1079(copyto)
+    13630    0.594    0.000    0.761    0.000 /data/grizos/Scale-Sim-SPM/scalesim/compute/systolic_compute_ws.py:609(skew_matrix)
+  2018399    0.509    0.000    0.509    0.000 {built-in method numpy.zeros}
+    26411    0.468    0.000    0.468    0.000 {method 'reduce' of 'numpy.ufunc' objects}
+  4320152    0.460    0.000    0.460    0.000 /data/grizos/Scale-Sim-SPM/venv/lib/python3.8/site-packages/numpy/core/multiarray.py:152(concatenate)
+       58    0.437    0.008    0.444    0.008 /data/grizos/Scale-Sim-SPM/scalesim/compute/operand_matrix.py:195(calc_ifmap_elem_addr)
+   224895    0.437    0.000    0.738    0.000 /data/grizos/Scale-Sim-SPM/scalesim/compute/systolic_compute_ws.py:383(<genexpr>)
+  3992117    0.346    0.000    0.346    0.000 {built-in method builtins.len}
+     2632    0.343    0.000    0.343    0.000 /data/grizos/Scale-Sim-SPM/scalesim/memory/write_buffer.py:300(<listcomp>)
+   218080    0.301    0.000    0.301    0.000 {method 'count' of 'list' objects}
+  1988037    0.241    0.000    0.241    0.000 /data/grizos/Scale-Sim-SPM/venv/lib/python3.8/site-packages/tqdm/std.py:1166(__iter__)
+       58    0.235    0.004    0.235    0.004 {built-in method posix.system}
+   339674    0.193    0.000    0.193    0.000 {built-in method numpy.arange}
+
+

@@ -1,0 +1,48 @@
+$ /data/grizos/Scale-Sim-SPM/venv/bin/python /data/grizos/Scale-Sim-SPM/scalesim/scale.py -c /data/grizos/Scale-Sim-SPM/benchmarks/results_new/cfgs/dense_sparse__grid_a64_s64_calc__optimized__rep1.cfg -t /data/grizos/Scale-Sim-SPM/topologies/sparsity/gemm.csv -l /data/grizos/Scale-Sim-SPM/layouts/conv_nets/test.csv -p /data/grizos/Scale-Sim-SPM/benchmarks/results_new/runs/optimized -i gemm -s N
+(cwd=/data/grizos/Scale-Sim-SPM)
+
+====================================================
+******************* SCALE SIM **********************
+====================================================
+Array Size: 	64x64
+SRAM IFMAP (kB): 	64
+SRAM Filter (kB): 	64
+SRAM OFMAP (kB): 	64
+Dataflow: 	Weight Stationary
+topology file path: 	/data/grizos/Scale-Sim-SPM/topologies/sparsity/gemm.csv
+layout file path: 	/data/grizos/Scale-Sim-SPM/layouts/conv_nets/test.csv
+Working in ESTIMATE BANDWIDTH mode.
+====================================================
+
+Running Layer 0
+  0%|          | 0/193 [00:00<?, ?it/s]100%|██████████| 193/193 [00:00<00:00, 17408.62it/s]
+Total cycles: 258
+Compute cycles: 192
+Stall cycles: 0
+Overall utilization: 0.03%
+Mapping efficiency: 0.78%
+Average IFMAP SRAM BW: 88.000 words/cycle
+Average Filter SRAM BW: 0.208 words/cycle
+Average Filter Metadata SRAM BW: 0.013 words/cycle
+Average OFMAP SRAM BW: 0.078 words/cycle
+Average IFMAP DRAM BW: 0.727 words/cycle
+Average Filter DRAM BW: 0.485 words/cycle
+Average OFMAP DRAM BW: 15.000 words/cycle
+Saving traces: Done!
+
+Running Layer 1
+  0%|          | 0/191 [00:00<?, ?it/s]100%|██████████| 191/191 [00:00<00:00, 17638.65it/s]
+Total cycles: 256
+Compute cycles: 190
+Stall cycles: 0
+Overall utilization: 0.01%
+Mapping efficiency: 0.78%
+Average IFMAP SRAM BW: 86.232 words/cycle
+Average Filter SRAM BW: 0.211 words/cycle
+Average Filter Metadata SRAM BW: 0.013 words/cycle
+Average OFMAP SRAM BW: 0.026 words/cycle
+Average IFMAP DRAM BW: 0.242 words/cycle
+Average Filter DRAM BW: 0.485 words/cycle
+Average OFMAP DRAM BW: 5.000 words/cycle
+Saving traces: Done!
+************ SCALE SIM Run Complete ****************

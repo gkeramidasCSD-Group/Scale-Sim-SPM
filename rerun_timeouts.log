@@ -1,0 +1,167 @@
+2026-09-30 20:24:12 55 timed-out runs found, 0 already re-run, 55 to go; jobs=12, limit=none
+  optimized vgg16        grid_a16_s16_user    was > 2.0 h | other version:   timeout
+  optimized vgg16        grid_a32_s16_user    was > 2.0 h | other version:   timeout
+  optimized vgg16        grid_a32_s32_user    was > 2.0 h | other version:   timeout
+  vanilla   googlenet    grid_a64_s16_user    was > 2.0 h | other version:     328 s
+  vanilla   alexnet      grid_a64_s16_user    was > 2.0 h | other version:     328 s
+  vanilla   vit_b        grid_a64_s32_user    was > 2.0 h | other version:     459 s
+  vanilla   resnet18     grid_a64_s64_user    was > 2.0 h | other version:     462 s
+  vanilla   mnasnet      grid_a32_s16_user    was > 2.0 h | other version:     501 s
+  vanilla   mnasnet      grid_a16_s16_user    was > 2.0 h | other version:     518 s
+  vanilla   googlenet    grid_a32_s16_user    was > 2.0 h | other version:     537 s
+  vanilla   alexnet      grid_a32_s32_user    was > 2.0 h | other version:     573 s
+  vanilla   mnasnet      grid_a64_s32_user    was > 2.0 h | other version:     587 s
+  vanilla   vit_b        grid_a16_s32_user    was > 2.0 h | other version:     652 s
+  vanilla   vit_b        grid_a16_s16_user    was > 2.0 h | other version:     703 s
+  vanilla   resnet18     grid_a64_s32_user    was > 2.0 h | other version:     729 s
+  vanilla   vit_b        grid_a64_s16_user    was > 2.0 h | other version:     736 s
+  vanilla   mnasnet      grid_a64_s16_user    was > 2.0 h | other version:     737 s
+  vanilla   alexnet      grid_a16_s32_user    was > 2.0 h | other version:     794 s
+  vanilla   alexnet      grid_a32_s16_user    was > 2.0 h | other version:     874 s
+  vanilla   resnet50     grid_a64_s64_user    was > 2.0 h | other version:     919 s
+  vanilla   googlenet    grid_a16_s16_user    was > 2.0 h | other version:     950 s
+  vanilla   vit_b        grid_a16_s64_user    was > 2.0 h | other version:     976 s
+  vanilla   vit_b        grid_a32_s64_user    was > 2.0 h | other version:    1188 s
+  vanilla   resnet18     grid_a64_s16_user    was > 2.0 h | other version:    1204 s
+  vanilla   alexnet      grid_a16_s16_user    was > 2.0 h | other version:    1217 s
+  vanilla   resnet50     grid_a64_s32_user    was > 2.0 h | other version:    1394 s
+  vanilla   vit_b        grid_a32_s32_user    was > 2.0 h | other version:    1539 s
+  vanilla   resnet18     grid_a16_s32_user    was > 2.0 h | other version:    1579 s
+  vanilla   vit_b        grid_a32_s16_user    was > 2.0 h | other version:    1626 s
+  vanilla   vgg16        grid_a64_s128_user   was > 2.0 h | other version:    1647 s
+  vanilla   resnet18     grid_a16_s16_user    was > 2.0 h | other version:    1680 s
+  vanilla   resnet18     grid_a16_s64_user    was > 2.0 h | other version:    1761 s
+  vanilla   resnet18     grid_a32_s64_user    was > 2.0 h | other version:    1955 s
+  vanilla   vgg16        grid_a64_s64_user    was > 2.0 h | other version:    2036 s
+  vanilla   resnet50     grid_a64_s16_user    was > 2.0 h | other version:    2071 s
+  vanilla   vgg16        grid_a32_s128_user   was > 2.0 h | other version:    2324 s
+  vanilla   resnet50     grid_a32_s64_user    was > 2.0 h | other version:    2737 s
+  vanilla   resnet18     grid_a32_s32_user    was > 2.0 h | other version:    2737 s
+  vanilla   vgg16        grid_a64_s32_user    was > 2.0 h | other version:    2948 s
+  vanilla   resnet18     grid_a32_s16_user    was > 2.0 h | other version:    2969 s
+  vanilla   resnet50     grid_a16_s64_user    was > 2.0 h | other version:    3044 s
+  vanilla   resnet50     grid_a16_s32_user    was > 2.0 h | other version:    4254 s
+  vanilla   vgg16        grid_a64_s16_user    was > 2.0 h | other version:    4310 s
+  vanilla   vgg16        grid_a16_s256_user   was > 2.0 h | other version:    4337 s
+  vanilla   vgg16        grid_a16_s64_calc    was > 2.0 h | other version:    4424 s
+  vanilla   resnet50     grid_a32_s32_user    was > 2.0 h | other version:    4653 s
+  vanilla   vgg16        grid_a16_s128_user   was > 2.0 h | other version:    4761 s
+  vanilla   vgg16        grid_a32_s64_user    was > 2.0 h | other version:    4940 s
+  vanilla   resnet50     grid_a32_s16_user    was > 2.0 h | other version:    5536 s
+  vanilla   resnet50     grid_a16_s16_user    was > 2.0 h | other version:    5834 s
+  vanilla   vgg16        grid_a16_s64_user    was > 2.0 h | other version:    6504 s
+  vanilla   vgg16        grid_a16_s32_user    was > 2.0 h | other version:    6952 s
+  vanilla   vgg16        grid_a16_s16_user    was > 2.0 h | other version:   timeout
+  vanilla   vgg16        grid_a32_s16_user    was > 2.0 h | other version:   timeout
+  vanilla   vgg16        grid_a32_s32_user    was > 2.0 h | other version:   timeout
+2026-09-30 20:24:12 start  vgg16__grid_a16_s16_user__optimized__rep1
+2026-09-30 20:24:17 start  vgg16__grid_a32_s16_user__optimized__rep1
+2026-09-30 20:24:22 start  vgg16__grid_a32_s32_user__optimized__rep1
+2026-09-30 20:24:27 start  googlenet__grid_a64_s16_user__vanilla__rep1
+2026-09-30 20:24:32 start  alexnet__grid_a64_s16_user__vanilla__rep1
+2026-09-30 20:24:37 start  vit_b__grid_a64_s32_user__vanilla__rep1
+2026-09-30 20:24:42 start  resnet18__grid_a64_s64_user__vanilla__rep1
+2026-09-30 20:24:47 start  mnasnet__grid_a32_s16_user__vanilla__rep1
+2026-09-30 20:24:52 start  mnasnet__grid_a16_s16_user__vanilla__rep1
+2026-09-30 20:24:57 start  googlenet__grid_a32_s16_user__vanilla__rep1
+2026-09-30 20:25:02 start  alexnet__grid_a32_s32_user__vanilla__rep1
+2026-09-30 20:25:07 start  mnasnet__grid_a64_s32_user__vanilla__rep1
+2026-09-30 21:08:47 [1/55] done vgg16__grid_a32_s32_user__optimized__rep1: 0.74 h, status=failed
+2026-09-30 21:08:47 start  vit_b__grid_a16_s32_user__vanilla__rep1
+2026-09-30 21:26:23 [2/55] done vgg16__grid_a32_s16_user__optimized__rep1: 1.03 h, status=failed
+2026-09-30 21:26:23 start  vit_b__grid_a16_s16_user__vanilla__rep1
+2026-09-30 22:47:06 [3/55] done vgg16__grid_a16_s16_user__optimized__rep1: 2.38 h, status=failed
+2026-09-30 22:47:06 start  resnet18__grid_a64_s32_user__vanilla__rep1
+2026-10-01 00:04:09 [4/55] done resnet18__grid_a64_s64_user__vanilla__rep1: 3.66 h, status=ok  speedup 28.47x
+2026-10-01 00:04:09 start  vit_b__grid_a64_s16_user__vanilla__rep1
+2026-10-01 00:09:12 [5/55] done googlenet__grid_a64_s16_user__vanilla__rep1: 3.74 h, status=ok  speedup 41.12x
+2026-10-01 00:09:12 start  mnasnet__grid_a64_s16_user__vanilla__rep1
+2026-10-01 00:43:11 [6/55] done mnasnet__grid_a16_s16_user__vanilla__rep1: 4.30 h, status=ok  speedup 29.91x
+2026-10-01 00:43:11 start  alexnet__grid_a16_s32_user__vanilla__rep1
+2026-10-01 00:58:28 [7/55] done mnasnet__grid_a32_s16_user__vanilla__rep1: 4.56 h, status=ok  speedup 32.76x
+2026-10-01 00:58:28 start  alexnet__grid_a32_s16_user__vanilla__rep1
+2026-10-01 01:27:58 [8/55] done mnasnet__grid_a64_s32_user__vanilla__rep1: 5.05 h, status=ok  speedup 30.95x
+2026-10-01 01:27:58 start  resnet50__grid_a64_s64_user__vanilla__rep1
+2026-10-01 02:50:50 [9/55] done alexnet__grid_a64_s16_user__vanilla__rep1: 6.44 h, status=ok  speedup 70.65x
+2026-10-01 02:50:50 start  googlenet__grid_a16_s16_user__vanilla__rep1
+2026-10-01 05:56:07 [10/55] done resnet50__grid_a64_s64_user__vanilla__rep1: 4.47 h, status=ok  speedup 17.49x
+2026-10-01 05:56:07 start  vit_b__grid_a16_s64_user__vanilla__rep1
+2026-10-01 11:57:32 [11/55] done vit_b__grid_a64_s32_user__vanilla__rep1: 15.55 h, status=ok  speedup 121.82x
+2026-10-01 11:57:32 start  vit_b__grid_a32_s64_user__vanilla__rep1
+2026-10-01 12:48:03 [12/55] done vit_b__grid_a16_s32_user__vanilla__rep1: 15.65 h, status=ok  speedup 86.39x
+2026-10-01 12:48:03 start  resnet18__grid_a64_s16_user__vanilla__rep1
+2026-10-01 19:59:20 [13/55] done vit_b__grid_a64_s16_user__vanilla__rep1: 19.92 h, status=interrupted
+2026-10-01 19:59:20 start  alexnet__grid_a16_s16_user__vanilla__rep1
+2026-10-01 19:59:20 [14/55] done alexnet__grid_a32_s16_user__vanilla__rep1: 19.01 h, status=interrupted
+2026-10-01 19:59:20 [15/55] done alexnet__grid_a16_s32_user__vanilla__rep1: 19.27 h, status=interrupted
+2026-10-01 19:59:20 [16/55] done vit_b__grid_a16_s64_user__vanilla__rep1: 14.05 h, status=interrupted
+2026-10-01 19:59:20 [17/55] done vit_b__grid_a16_s16_user__vanilla__rep1: 22.55 h, status=interrupted
+2026-10-01 19:59:20 [18/55] done alexnet__grid_a32_s32_user__vanilla__rep1: 23.57 h, status=interrupted
+2026-10-01 19:59:20 [19/55] done googlenet__grid_a16_s16_user__vanilla__rep1: 17.14 h, status=interrupted
+2026-10-01 19:59:20 [20/55] done mnasnet__grid_a64_s16_user__vanilla__rep1: 19.83 h, status=interrupted
+2026-10-01 19:59:20 [21/55] done resnet18__grid_a64_s32_user__vanilla__rep1: 21.20 h, status=interrupted
+2026-10-01 19:59:20 [22/55] done googlenet__grid_a32_s16_user__vanilla__rep1: 23.57 h, status=interrupted
+2026-10-01 19:59:25 start  resnet50__grid_a64_s32_user__vanilla__rep1
+2026-10-01 19:59:30 start  vit_b__grid_a32_s32_user__vanilla__rep1
+2026-10-01 19:59:35 start  resnet18__grid_a16_s32_user__vanilla__rep1
+2026-10-01 19:59:40 start  vit_b__grid_a32_s16_user__vanilla__rep1
+2026-10-01 19:59:45 start  vgg16__grid_a64_s128_user__vanilla__rep1
+2026-10-01 19:59:50 start  resnet18__grid_a16_s16_user__vanilla__rep1
+2026-10-01 19:59:55 start  resnet18__grid_a16_s64_user__vanilla__rep1
+2026-10-01 20:00:00 start  resnet18__grid_a32_s64_user__vanilla__rep1
+2026-10-01 20:00:05 start  vgg16__grid_a64_s64_user__vanilla__rep1
+2026-10-01 23:08:31 [23/55] done vgg16__grid_a64_s128_user__vanilla__rep1: 3.14 h, status=ok  speedup 6.87x
+2026-10-01 23:08:31 start  resnet50__grid_a64_s16_user__vanilla__rep1
+2026-10-01 23:59:21 start  vgg16__grid_a32_s128_user__vanilla__rep1
+2026-10-01 23:59:21 [24/55] done vit_b__grid_a32_s64_user__vanilla__rep1: 12.03 h, status=interrupted
+2026-10-02 00:49:21 [25/55] done resnet18__grid_a64_s16_user__vanilla__rep1: 12.02 h, status=interrupted
+2026-10-02 00:49:21 start  resnet50__grid_a32_s64_user__vanilla__rep1
+2026-10-02 04:17:51 [26/55] done vgg16__grid_a32_s128_user__vanilla__rep1: 4.31 h, status=failed
+2026-10-02 04:17:51 start  resnet18__grid_a32_s32_user__vanilla__rep1
+2026-10-02 08:09:23 [27/55] done vit_b__grid_a32_s16_user__vanilla__rep1: 12.16 h, status=interrupted
+2026-10-02 08:09:23 start  vgg16__grid_a64_s32_user__vanilla__rep1
+2026-10-02 08:09:23 [28/55] done alexnet__grid_a16_s16_user__vanilla__rep1: 12.17 h, status=interrupted
+2026-10-02 08:09:23 [29/55] done vit_b__grid_a32_s32_user__vanilla__rep1: 12.16 h, status=interrupted
+2026-10-02 08:09:23 [30/55] done resnet18__grid_a16_s16_user__vanilla__rep1: 12.16 h, status=interrupted
+2026-10-02 08:09:23 [31/55] done resnet18__grid_a16_s64_user__vanilla__rep1: 12.16 h, status=interrupted
+2026-10-02 08:09:23 [32/55] done resnet18__grid_a32_s64_user__vanilla__rep1: 12.16 h, status=interrupted
+2026-10-02 08:09:23 [33/55] done resnet18__grid_a16_s32_user__vanilla__rep1: 12.16 h, status=interrupted
+2026-10-02 08:09:24 [34/55] done resnet50__grid_a64_s32_user__vanilla__rep1: 12.16 h, status=interrupted
+2026-10-02 08:09:24 [35/55] done vgg16__grid_a64_s64_user__vanilla__rep1: 12.15 h, status=interrupted
+2026-10-02 08:09:28 start  resnet18__grid_a32_s16_user__vanilla__rep1
+2026-10-02 08:09:33 start  resnet50__grid_a16_s64_user__vanilla__rep1
+2026-10-02 08:09:38 start  resnet50__grid_a16_s32_user__vanilla__rep1
+2026-10-02 08:09:43 start  vgg16__grid_a64_s16_user__vanilla__rep1
+2026-10-02 08:09:48 start  vgg16__grid_a16_s256_user__vanilla__rep1
+2026-10-02 08:09:53 start  vgg16__grid_a16_s64_calc__vanilla__rep1
+2026-10-02 08:09:58 start  resnet50__grid_a32_s32_user__vanilla__rep1
+2026-10-02 08:10:03 start  vgg16__grid_a16_s128_user__vanilla__rep1
+2026-10-02 10:37:09 [36/55] done vgg16__grid_a16_s64_calc__vanilla__rep1: 2.45 h, status=failed
+2026-10-02 10:37:09 start  vgg16__grid_a32_s64_user__vanilla__rep1
+2026-10-02 11:09:24 [37/55] done resnet50__grid_a64_s16_user__vanilla__rep1: 12.01 h, status=interrupted
+2026-10-02 11:09:24 start  resnet50__grid_a32_s16_user__vanilla__rep1
+2026-10-02 11:27:30 [38/55] done vgg16__grid_a16_s256_user__vanilla__rep1: 3.29 h, status=failed
+2026-10-02 11:27:30 start  resnet50__grid_a16_s16_user__vanilla__rep1
+2026-10-02 12:11:27 [39/55] done vgg16__grid_a16_s128_user__vanilla__rep1: 4.02 h, status=failed
+2026-10-02 12:11:27 start  vgg16__grid_a16_s64_user__vanilla__rep1
+2026-10-02 12:51:27 [40/55] done resnet50__grid_a32_s64_user__vanilla__rep1: 12.03 h, status=interrupted
+2026-10-02 12:51:27 start  vgg16__grid_a16_s32_user__vanilla__rep1
+2026-10-02 14:06:05 [41/55] done vgg16__grid_a32_s64_user__vanilla__rep1: 3.48 h, status=failed
+2026-10-02 14:06:05 start  vgg16__grid_a16_s16_user__vanilla__rep1
+2026-10-02 15:00:25 [42/55] done resnet50__grid_a16_s64_user__vanilla__rep1: 6.85 h, status=failed
+2026-10-02 15:00:25 start  vgg16__grid_a32_s16_user__vanilla__rep1
+2026-10-02 15:49:14 [43/55] done vgg16__grid_a16_s64_user__vanilla__rep1: 3.63 h, status=failed
+2026-10-02 15:49:14 start  vgg16__grid_a32_s32_user__vanilla__rep1
+2026-10-02 16:26:05 [44/55] done resnet18__grid_a32_s32_user__vanilla__rep1: 12.14 h, status=interrupted
+2026-10-02 17:54:12 [45/55] done vgg16__grid_a16_s32_user__vanilla__rep1: 5.04 h, status=failed
+2026-10-02 20:16:07 [46/55] done resnet18__grid_a32_s16_user__vanilla__rep1: 12.11 h, status=interrupted
+2026-10-02 20:16:07 [47/55] done resnet50__grid_a32_s32_user__vanilla__rep1: 12.10 h, status=interrupted
+2026-10-02 20:16:07 [48/55] done resnet50__grid_a16_s32_user__vanilla__rep1: 12.11 h, status=interrupted
+2026-10-02 20:16:08 [49/55] done vgg16__grid_a64_s16_user__vanilla__rep1: 12.11 h, status=interrupted
+2026-10-02 20:16:08 [50/55] done vgg16__grid_a64_s32_user__vanilla__rep1: 12.11 h, status=interrupted
+2026-10-02 23:16:08 [51/55] done resnet50__grid_a32_s16_user__vanilla__rep1: 12.11 h, status=interrupted
+2026-10-02 23:36:09 [52/55] done resnet50__grid_a16_s16_user__vanilla__rep1: 12.14 h, status=interrupted
+2026-10-03 02:16:10 [53/55] done vgg16__grid_a16_s16_user__vanilla__rep1: 12.17 h, status=interrupted
+2026-10-03 03:06:09 [54/55] done vgg16__grid_a32_s16_user__vanilla__rep1: 12.09 h, status=interrupted
+2026-10-03 03:56:10 [55/55] done vgg16__grid_a32_s32_user__vanilla__rep1: 12.11 h, status=interrupted
+2026-10-03 03:56:10 merged: 10 timed-out rows replaced, 45 rows still not ok -> /data/grizos/Scale-Sim-SPM/benchmarks/results_new/rerun_timeouts/results_merged.csv

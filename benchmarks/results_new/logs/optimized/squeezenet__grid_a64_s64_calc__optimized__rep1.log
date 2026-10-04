@@ -1,0 +1,406 @@
+$ /data/grizos/Scale-Sim-SPM/venv/bin/python /data/grizos/Scale-Sim-SPM/scalesim/scale.py -c /data/grizos/Scale-Sim-SPM/benchmarks/results_new/cfgs/squeezenet__grid_a64_s64_calc__optimized__rep1.cfg -t /data/grizos/Scale-Sim-SPM/topologies/conv_nets/SqueezeNet.csv -l /data/grizos/Scale-Sim-SPM/layouts/conv_nets/test.csv -p /data/grizos/Scale-Sim-SPM/benchmarks/results_new/runs/optimized -i conv -s N
+(cwd=/data/grizos/Scale-Sim-SPM)
+
+====================================================
+******************* SCALE SIM **********************
+====================================================
+Array Size: 	64x64
+SRAM IFMAP (kB): 	64
+SRAM Filter (kB): 	64
+SRAM OFMAP (kB): 	64
+Dataflow: 	Weight Stationary
+topology file path: 	/data/grizos/Scale-Sim-SPM/topologies/conv_nets/SqueezeNet.csv
+layout file path: 	/data/grizos/Scale-Sim-SPM/layouts/conv_nets/test.csv
+Working in ESTIMATE BANDWIDTH mode.
+====================================================
+
+Running Layer 0
+  0%|          | 0/73740 [00:00<?, ?it/s]  1%|          | 885/73740 [00:00<00:08, 8842.12it/s]  2%|▏         | 1770/73740 [00:00<00:08, 8510.72it/s]  4%|▎         | 2622/73740 [00:00<00:08, 8429.16it/s]  5%|▍         | 3466/73740 [00:00<00:09, 7676.76it/s]  6%|▌         | 4274/73740 [00:00<00:08, 7810.21it/s]  7%|▋         | 5116/73740 [00:00<00:08, 8004.58it/s]  8%|▊         | 5927/73740 [00:00<00:08, 8035.67it/s]  9%|▉         | 6744/73740 [00:00<00:08, 8076.22it/s] 10%|█         | 7558/73740 [00:00<00:08, 8095.58it/s] 11%|█▏        | 8370/73740 [00:01<00:08, 8039.17it/s] 12%|█▏        | 9204/73740 [00:01<00:07, 8129.34it/s] 14%|█▎        | 10035/73740 [00:01<00:07, 8182.45it/s] 15%|█▍        | 10854/73740 [00:01<00:07, 8122.24it/s] 16%|█▌        | 11691/73740 [00:01<00:07, 8193.82it/s] 17%|█▋        | 12620/73740 [00:01<00:07, 8518.94it/s] 18%|█▊        | 13473/73740 [00:01<00:07, 8369.97it/s] 19%|█▉        | 14311/73740 [00:01<00:07, 8328.06it/s] 21%|██        | 15145/73740 [00:01<00:07, 8277.42it/s] 22%|██▏       | 15976/73740 [00:01<00:06, 8285.34it/s] 23%|██▎       | 16805/73740 [00:02<00:07, 8131.93it/s] 24%|██▍       | 17637/73740 [00:02<00:06, 8186.89it/s] 25%|██▌       | 18465/73740 [00:02<00:06, 8212.29it/s] 26%|██▌       | 19287/73740 [00:02<00:06, 8105.89it/s] 27%|██▋       | 20118/73740 [00:02<00:06, 8164.40it/s] 28%|██▊       | 20944/73740 [00:02<00:06, 8190.61it/s] 30%|██▉       | 21764/73740 [00:02<00:06, 8154.82it/s] 31%|███       | 22597/73740 [00:02<00:06, 8206.78it/s] 32%|███▏      | 23418/73740 [00:02<00:06, 8189.07it/s] 33%|███▎      | 24238/73740 [00:02<00:06, 8169.02it/s] 34%|███▍      | 25307/73740 [00:03<00:05, 8918.77it/s] 36%|███▌      | 26333/73740 [00:03<00:05, 9318.95it/s] 37%|███▋      | 27346/73740 [00:03<00:04, 9560.26it/s] 38%|███▊      | 28373/73740 [00:03<00:04, 9771.31it/s] 40%|███▉      | 29376/73740 [00:03<00:04, 9845.99it/s] 41%|████      | 30411/73740 [00:03<00:04, 9995.19it/s] 43%|████▎     | 31830/73740 [00:03<00:03, 11251.44it/s] 45%|████▌     | 33307/73740 [00:03<00:03, 12209.98it/s] 47%|████▋     | 34847/73740 [00:03<00:02, 13160.21it/s] 49%|████▉     | 36399/73740 [00:03<00:02, 13863.56it/s] 52%|█████▏    | 38013/73740 [00:04<00:02, 14543.83it/s] 54%|█████▎    | 39511/73740 [00:04<00:02, 14671.87it/s] 56%|█████▌    | 41075/73740 [00:04<00:02, 14961.59it/s] 58%|█████▊    | 42647/73740 [00:04<00:02, 15186.68it/s] 60%|█████▉    | 44174/73740 [00:04<00:01, 15209.18it/s] 62%|██████▏   | 45741/73740 [00:04<00:01, 15347.10it/s] 64%|██████▍   | 47302/73740 [00:04<00:01, 15423.81it/s] 66%|██████▌   | 48845/73740 [00:04<00:01, 15388.43it/s] 68%|██████▊   | 50505/73740 [00:04<00:01, 15750.41it/s] 71%|███████   | 52081/73740 [00:04<00:01, 15604.94it/s] 73%|███████▎  | 53642/73740 [00:05<00:01, 15540.49it/s] 75%|███████▍  | 55197/73740 [00:05<00:01, 15254.56it/s] 77%|███████▋  | 56724/73740 [00:05<00:01, 15211.40it/s] 79%|███████▉  | 58246/73740 [00:05<00:01, 15104.83it/s] 81%|████████  | 59758/73740 [00:05<00:00, 14933.44it/s] 83%|████████▎ | 61252/73740 [00:05<00:00, 14817.08it/s] 86%|████████▌ | 63216/73740 [00:05<00:00, 16235.76it/s] 88%|████████▊ | 65156/73740 [00:05<00:00, 17170.52it/s] 91%|█████████ | 67163/73740 [00:05<00:00, 18029.39it/s] 94%|█████████▎| 69130/73740 [00:05<00:00, 18516.95it/s] 96%|█████████▋| 71076/73740 [00:06<00:00, 18796.85it/s] 99%|█████████▉| 73012/73740 [00:06<00:00, 18964.72it/s]100%|██████████| 73740/73740 [00:06<00:00, 11845.26it/s]
+Total cycles: 77128
+Compute cycles: 73739
+Stall cycles: 0
+Overall utilization: 56.53%
+Mapping efficiency: 57.42%
+Average IFMAP SRAM BW: 48.243 words/cycle
+Average Filter SRAM BW: 0.191 words/cycle
+Average OFMAP SRAM BW: 47.259 words/cycle
+Average IFMAP DRAM BW: 10.531 words/cycle
+Average Filter DRAM BW: 9.793 words/cycle
+Average OFMAP DRAM BW: 47.576 words/cycle
+Saving traces: Done!
+
+Running Layer 1
+  0%|          | 0/6212 [00:00<?, ?it/s] 26%|██▌       | 1601/6212 [00:00<00:00, 16003.80it/s] 52%|█████▏    | 3202/6212 [00:00<00:00, 15595.00it/s] 83%|████████▎ | 5145/6212 [00:00<00:00, 17317.75it/s]100%|██████████| 6212/6212 [00:00<00:00, 17431.32it/s]
+Total cycles: 9856
+Compute cycles: 6211
+Stall cycles: 0
+Overall utilization: 17.61%
+Mapping efficiency: 18.75%
+Average IFMAP SRAM BW: 45.071 words/cycle
+Average Filter SRAM BW: 0.247 words/cycle
+Average OFMAP SRAM BW: 15.024 words/cycle
+Average IFMAP DRAM BW: 31.982 words/cycle
+Average Filter DRAM BW: 7.797 words/cycle
+Average OFMAP DRAM BW: 20.917 words/cycle
+Saving traces: Done!
+
+Running Layer 2
+  0%|          | 0/3106 [00:00<?, ?it/s] 51%|█████     | 1571/3106 [00:00<00:00, 15707.02it/s]100%|██████████| 3106/3106 [00:00<00:00, 15587.94it/s]
+Total cycles: 6672
+Compute cycles: 3105
+Stall cycles: 0
+Overall utilization: 23.48%
+Mapping efficiency: 25.00%
+Average IFMAP SRAM BW: 15.026 words/cycle
+Average Filter SRAM BW: 0.330 words/cycle
+Average OFMAP SRAM BW: 60.104 words/cycle
+Average IFMAP DRAM BW: 8.752 words/cycle
+Average Filter DRAM BW: 7.817 words/cycle
+Average OFMAP DRAM BW: 66.865 words/cycle
+Saving traces: Done!
+
+Running Layer 3
+  0%|          | 0/9318 [00:00<?, ?it/s] 14%|█▍        | 1289/9318 [00:00<00:00, 12884.45it/s] 28%|██▊       | 2578/9318 [00:00<00:00, 12150.78it/s] 42%|████▏     | 3905/9318 [00:00<00:00, 12642.15it/s] 56%|█████▌    | 5173/9318 [00:00<00:00, 12397.91it/s] 70%|██████▉   | 6497/9318 [00:00<00:00, 12691.02it/s] 86%|████████▌ | 7990/9318 [00:00<00:00, 13438.00it/s]100%|██████████| 9318/9318 [00:00<00:00, 13206.23it/s]
+Total cycles: 12964
+Compute cycles: 9317
+Stall cycles: 0
+Overall utilization: 70.42%
+Mapping efficiency: 75.00%
+Average IFMAP SRAM BW: 45.069 words/cycle
+Average Filter SRAM BW: 0.989 words/cycle
+Average OFMAP SRAM BW: 60.091 words/cycle
+Average IFMAP DRAM BW: 12.853 words/cycle
+Average Filter DRAM BW: 9.375 words/cycle
+Average OFMAP DRAM BW: 61.640 words/cycle
+Saving traces: Done!
+
+Running Layer 4
+  0%|          | 0/6212 [00:00<?, ?it/s] 23%|██▎       | 1445/6212 [00:00<00:00, 14444.81it/s] 47%|████▋     | 2890/6212 [00:00<00:00, 13904.53it/s] 71%|███████▏  | 4427/6212 [00:00<00:00, 14556.72it/s] 95%|█████████▍| 5885/6212 [00:00<00:00, 14035.48it/s]100%|██████████| 6212/6212 [00:00<00:00, 14243.34it/s]
+Total cycles: 9856
+Compute cycles: 6211
+Stall cycles: 0
+Overall utilization: 23.47%
+Mapping efficiency: 25.00%
+Average IFMAP SRAM BW: 60.095 words/cycle
+Average Filter SRAM BW: 0.330 words/cycle
+Average OFMAP SRAM BW: 15.024 words/cycle
+Average IFMAP DRAM BW: 40.895 words/cycle
+Average Filter DRAM BW: 7.817 words/cycle
+Average OFMAP DRAM BW: 20.917 words/cycle
+Saving traces: Done!
+
+Running Layer 5
+  0%|          | 0/3106 [00:00<?, ?it/s] 50%|████▉     | 1552/3106 [00:00<00:00, 15510.14it/s]100%|█████████▉| 3104/3106 [00:00<00:00, 15006.98it/s]100%|██████████| 3106/3106 [00:00<00:00, 15076.49it/s]
+Total cycles: 6672
+Compute cycles: 3105
+Stall cycles: 0
+Overall utilization: 23.48%
+Mapping efficiency: 25.00%
+Average IFMAP SRAM BW: 15.026 words/cycle
+Average Filter SRAM BW: 0.330 words/cycle
+Average OFMAP SRAM BW: 60.104 words/cycle
+Average IFMAP DRAM BW: 8.752 words/cycle
+Average Filter DRAM BW: 7.817 words/cycle
+Average OFMAP DRAM BW: 66.865 words/cycle
+Saving traces: Done!
+
+Running Layer 6
+  0%|          | 0/9318 [00:00<?, ?it/s] 13%|█▎        | 1220/9318 [00:00<00:00, 12192.25it/s] 26%|██▌       | 2440/9318 [00:00<00:00, 11801.67it/s] 40%|███▉      | 3706/9318 [00:00<00:00, 12184.43it/s] 53%|█████▎    | 4926/9318 [00:00<00:00, 12037.11it/s] 66%|██████▌   | 6131/9318 [00:00<00:00, 12028.04it/s] 83%|████████▎ | 7699/9318 [00:00<00:00, 13255.42it/s] 98%|█████████▊| 9175/9318 [00:00<00:00, 13741.66it/s]100%|██████████| 9318/9318 [00:00<00:00, 12987.63it/s]
+Total cycles: 12964
+Compute cycles: 9317
+Stall cycles: 0
+Overall utilization: 70.42%
+Mapping efficiency: 75.00%
+Average IFMAP SRAM BW: 45.069 words/cycle
+Average Filter SRAM BW: 0.989 words/cycle
+Average OFMAP SRAM BW: 60.091 words/cycle
+Average IFMAP DRAM BW: 12.853 words/cycle
+Average Filter DRAM BW: 9.375 words/cycle
+Average OFMAP DRAM BW: 61.640 words/cycle
+Saving traces: Done!
+
+Running Layer 7
+  0%|          | 0/6212 [00:00<?, ?it/s] 21%|██        | 1314/6212 [00:00<00:00, 13135.16it/s] 42%|████▏     | 2628/6212 [00:00<00:00, 12854.64it/s] 63%|██████▎   | 3926/6212 [00:00<00:00, 12909.73it/s] 84%|████████▍ | 5218/6212 [00:00<00:00, 12708.66it/s]100%|██████████| 6212/6212 [00:00<00:00, 12615.84it/s]
+Total cycles: 9778
+Compute cycles: 6211
+Stall cycles: 0
+Overall utilization: 46.95%
+Mapping efficiency: 50.00%
+Average IFMAP SRAM BW: 60.095 words/cycle
+Average Filter SRAM BW: 0.659 words/cycle
+Average OFMAP SRAM BW: 30.047 words/cycle
+Average IFMAP DRAM BW: 40.895 words/cycle
+Average Filter DRAM BW: 8.924 words/cycle
+Average OFMAP DRAM BW: 34.559 words/cycle
+Saving traces: Done!
+
+Running Layer 8
+  0%|          | 0/6212 [00:00<?, ?it/s] 23%|██▎       | 1448/6212 [00:00<00:00, 14472.66it/s] 47%|████▋     | 2896/6212 [00:00<00:00, 13674.77it/s] 69%|██████▉   | 4277/6212 [00:00<00:00, 13734.32it/s] 91%|█████████ | 5653/6212 [00:00<00:00, 13496.34it/s]100%|██████████| 6212/6212 [00:00<00:00, 13711.31it/s]
+Total cycles: 9702
+Compute cycles: 6211
+Stall cycles: 0
+Overall utilization: 46.95%
+Mapping efficiency: 50.00%
+Average IFMAP SRAM BW: 30.047 words/cycle
+Average Filter SRAM BW: 0.659 words/cycle
+Average OFMAP SRAM BW: 60.095 words/cycle
+Average IFMAP DRAM BW: 21.703 words/cycle
+Average Filter DRAM BW: 8.924 words/cycle
+Average OFMAP DRAM BW: 64.121 words/cycle
+Saving traces: Done!
+
+Running Layer 9
+  0%|          | 0/31060 [00:00<?, ?it/s]  4%|▍         | 1188/31060 [00:00<00:02, 11876.84it/s]  8%|▊         | 2376/31060 [00:00<00:02, 11698.38it/s] 12%|█▏        | 3696/31060 [00:00<00:02, 12374.97it/s] 16%|█▌        | 4935/31060 [00:00<00:02, 12291.89it/s] 20%|█▉        | 6165/31060 [00:00<00:02, 12162.75it/s] 24%|██▍       | 7448/31060 [00:00<00:01, 12385.35it/s] 28%|██▊       | 8688/31060 [00:00<00:01, 12228.99it/s] 32%|███▏      | 9921/31060 [00:00<00:01, 12259.85it/s] 36%|███▌      | 11148/31060 [00:00<00:01, 12118.89it/s] 40%|███▉      | 12361/31060 [00:01<00:01, 11822.91it/s] 44%|████▍     | 13700/31060 [00:01<00:01, 12288.51it/s] 48%|████▊     | 14986/31060 [00:01<00:01, 12457.66it/s] 52%|█████▏    | 16277/31060 [00:01<00:01, 12592.54it/s] 56%|█████▋    | 17538/31060 [00:01<00:01, 12031.47it/s] 60%|██████    | 18748/31060 [00:01<00:01, 11973.67it/s] 64%|██████▍   | 19950/31060 [00:01<00:00, 11735.38it/s] 68%|██████▊   | 21127/31060 [00:01<00:00, 11636.43it/s] 72%|███████▏  | 22402/31060 [00:01<00:00, 11958.79it/s] 76%|███████▌  | 23601/31060 [00:01<00:00, 11693.10it/s] 80%|███████▉  | 24773/31060 [00:02<00:00, 11513.31it/s] 84%|████████▎ | 25970/31060 [00:02<00:00, 11643.51it/s] 87%|████████▋ | 27137/31060 [00:02<00:00, 11475.00it/s] 91%|█████████▏| 28409/31060 [00:02<00:00, 11837.68it/s] 95%|█████████▌| 29624/31060 [00:02<00:00, 11929.39it/s] 99%|█████████▉| 30864/31060 [00:02<00:00, 12067.23it/s]100%|██████████| 31060/31060 [00:02<00:00, 12018.52it/s]
+Total cycles: 34822
+Compute cycles: 31059
+Stall cycles: 0
+Overall utilization: 84.50%
+Mapping efficiency: 90.00%
+Average IFMAP SRAM BW: 54.078 words/cycle
+Average Filter SRAM BW: 1.187 words/cycle
+Average OFMAP SRAM BW: 60.087 words/cycle
+Average IFMAP DRAM BW: 29.084 words/cycle
+Average Filter DRAM BW: 1.309 words/cycle
+Average OFMAP DRAM BW: 60.441 words/cycle
+Saving traces: Done!
+
+Running Layer 10
+  0%|          | 0/3676 [00:00<?, ?it/s] 37%|███▋      | 1363/3676 [00:00<00:00, 13629.01it/s] 77%|███████▋  | 2845/3676 [00:00<00:00, 14326.56it/s]100%|██████████| 3676/3676 [00:00<00:00, 13989.47it/s]
+Total cycles: 7320
+Compute cycles: 3675
+Stall cycles: 0
+Overall utilization: 39.67%
+Mapping efficiency: 50.00%
+Average IFMAP SRAM BW: 50.782 words/cycle
+Average Filter SRAM BW: 2.229 words/cycle
+Average OFMAP SRAM BW: 25.391 words/cycle
+Average IFMAP DRAM BW: 28.992 words/cycle
+Average Filter DRAM BW: 9.615 words/cycle
+Average OFMAP DRAM BW: 33.905 words/cycle
+Saving traces: Done!
+
+Running Layer 11
+  0%|          | 0/1838 [00:00<?, ?it/s] 82%|████████▏ | 1513/1838 [00:00<00:00, 15128.61it/s]100%|██████████| 1838/1838 [00:00<00:00, 15280.19it/s]
+Total cycles: 4629
+Compute cycles: 1837
+Stall cycles: 0
+Overall utilization: 39.68%
+Mapping efficiency: 50.00%
+Average IFMAP SRAM BW: 25.398 words/cycle
+Average Filter SRAM BW: 2.230 words/cycle
+Average OFMAP SRAM BW: 50.796 words/cycle
+Average IFMAP DRAM BW: 9.893 words/cycle
+Average Filter DRAM BW: 8.924 words/cycle
+Average OFMAP DRAM BW: 58.287 words/cycle
+Saving traces: Done!
+
+Running Layer 12
+  0%|          | 0/9190 [00:00<?, ?it/s] 15%|█▍        | 1336/9190 [00:00<00:00, 13348.78it/s] 30%|███       | 2760/9190 [00:00<00:00, 13866.32it/s] 46%|████▌     | 4221/9190 [00:00<00:00, 14202.76it/s] 62%|██████▏   | 5690/9190 [00:00<00:00, 14391.32it/s] 78%|███████▊  | 7130/9190 [00:00<00:00, 14175.81it/s] 94%|█████████▎| 8607/9190 [00:00<00:00, 14374.70it/s]100%|██████████| 9190/9190 [00:00<00:00, 14294.65it/s]
+Total cycles: 12822
+Compute cycles: 9189
+Stall cycles: 0
+Overall utilization: 71.40%
+Mapping efficiency: 90.00%
+Average IFMAP SRAM BW: 45.696 words/cycle
+Average Filter SRAM BW: 4.012 words/cycle
+Average OFMAP SRAM BW: 50.774 words/cycle
+Average IFMAP DRAM BW: 9.783 words/cycle
+Average Filter DRAM BW: 3.458 words/cycle
+Average OFMAP DRAM BW: 52.559 words/cycle
+Saving traces: Done!
+
+Running Layer 13
+  0%|          | 0/3676 [00:00<?, ?it/s] 35%|███▌      | 1288/3676 [00:00<00:00, 12871.94it/s] 70%|███████   | 2576/3676 [00:00<00:00, 12333.60it/s]100%|██████████| 3676/3676 [00:00<00:00, 12510.61it/s]
+Total cycles: 7173
+Compute cycles: 3675
+Stall cycles: 0
+Overall utilization: 59.51%
+Mapping efficiency: 75.00%
+Average IFMAP SRAM BW: 50.782 words/cycle
+Average Filter SRAM BW: 3.344 words/cycle
+Average OFMAP SRAM BW: 38.087 words/cycle
+Average IFMAP DRAM BW: 28.992 words/cycle
+Average Filter DRAM BW: 9.870 words/cycle
+Average OFMAP DRAM BW: 44.738 words/cycle
+Saving traces: Done!
+
+Running Layer 14
+  0%|          | 0/2757 [00:00<?, ?it/s] 47%|████▋     | 1290/2757 [00:00<00:00, 12897.52it/s] 94%|█████████▎| 2580/2757 [00:00<00:00, 12479.06it/s]100%|██████████| 2757/2757 [00:00<00:00, 12651.21it/s]
+Total cycles: 6308
+Compute cycles: 2756
+Stall cycles: 0
+Overall utilization: 59.52%
+Mapping efficiency: 75.00%
+Average IFMAP SRAM BW: 38.090 words/cycle
+Average Filter SRAM BW: 3.344 words/cycle
+Average OFMAP SRAM BW: 50.787 words/cycle
+Average IFMAP DRAM BW: 18.330 words/cycle
+Average Filter DRAM BW: 9.375 words/cycle
+Average OFMAP DRAM BW: 57.673 words/cycle
+Saving traces: Done!
+
+Running Layer 15
+  0%|          | 0/19299 [00:00<?, ?it/s]  6%|▋         | 1224/19299 [00:00<00:01, 12233.04it/s] 13%|█▎        | 2448/19299 [00:00<00:01, 11783.13it/s] 19%|█▉        | 3628/19299 [00:00<00:01, 11779.78it/s] 26%|██▌       | 4925/19299 [00:00<00:01, 12240.18it/s] 32%|███▏      | 6150/19299 [00:00<00:01, 12023.34it/s] 38%|███▊      | 7383/19299 [00:00<00:00, 12125.22it/s] 45%|████▍     | 8597/19299 [00:00<00:00, 12061.62it/s] 51%|█████     | 9804/19299 [00:00<00:00, 12035.05it/s] 57%|█████▋    | 11008/19299 [00:00<00:00, 11987.89it/s] 64%|██████▍   | 12321/19299 [00:01<00:00, 12335.54it/s] 70%|███████   | 13556/19299 [00:01<00:00, 12236.35it/s] 77%|███████▋  | 14781/19299 [00:01<00:00, 12156.27it/s] 83%|████████▎ | 15998/19299 [00:01<00:00, 12045.48it/s] 89%|████████▉ | 17203/19299 [00:01<00:00, 11879.71it/s] 95%|█████████▌| 18404/19299 [00:01<00:00, 11917.63it/s]100%|██████████| 19299/19299 [00:01<00:00, 12058.36it/s]
+Total cycles: 23034
+Compute cycles: 19298
+Stall cycles: 0
+Overall utilization: 76.50%
+Mapping efficiency: 96.43%
+Average IFMAP SRAM BW: 48.958 words/cycle
+Average Filter SRAM BW: 4.298 words/cycle
+Average OFMAP SRAM BW: 50.771 words/cycle
+Average IFMAP DRAM BW: 34.045 words/cycle
+Average Filter DRAM BW: 4.605 words/cycle
+Average OFMAP DRAM BW: 51.327 words/cycle
+Saving traces: Done!
+
+Running Layer 16
+  0%|          | 0/5514 [00:00<?, ?it/s] 24%|██▎       | 1307/5514 [00:00<00:00, 13068.73it/s] 47%|████▋     | 2614/5514 [00:00<00:00, 12432.02it/s] 71%|███████▏  | 3939/5514 [00:00<00:00, 12791.29it/s] 95%|█████████▍| 5221/5514 [00:00<00:00, 12660.48it/s]100%|██████████| 5514/5514 [00:00<00:00, 12793.72it/s]
+Total cycles: 8933
+Compute cycles: 5513
+Stall cycles: 0
+Overall utilization: 59.50%
+Mapping efficiency: 75.00%
+Average IFMAP SRAM BW: 50.777 words/cycle
+Average Filter SRAM BW: 3.343 words/cycle
+Average OFMAP SRAM BW: 38.083 words/cycle
+Average IFMAP DRAM BW: 33.517 words/cycle
+Average Filter DRAM BW: 9.701 words/cycle
+Average OFMAP DRAM BW: 42.948 words/cycle
+Saving traces: Done!
+
+Running Layer 17
+  0%|          | 0/2757 [00:00<?, ?it/s] 51%|█████▏    | 1413/2757 [00:00<00:00, 14120.82it/s]100%|██████████| 2757/2757 [00:00<00:00, 13701.45it/s]
+Total cycles: 6308
+Compute cycles: 2756
+Stall cycles: 0
+Overall utilization: 59.52%
+Mapping efficiency: 75.00%
+Average IFMAP SRAM BW: 38.090 words/cycle
+Average Filter SRAM BW: 3.344 words/cycle
+Average OFMAP SRAM BW: 50.787 words/cycle
+Average IFMAP DRAM BW: 18.330 words/cycle
+Average Filter DRAM BW: 9.375 words/cycle
+Average OFMAP DRAM BW: 57.673 words/cycle
+Saving traces: Done!
+
+Running Layer 18
+  0%|          | 0/19299 [00:00<?, ?it/s]  7%|▋         | 1284/19299 [00:00<00:01, 12835.15it/s] 13%|█▎        | 2568/19299 [00:00<00:01, 12687.64it/s] 21%|██        | 3964/19299 [00:00<00:01, 13264.45it/s] 27%|██▋       | 5291/19299 [00:00<00:01, 12953.10it/s] 35%|███▍      | 6718/19299 [00:00<00:00, 13417.89it/s] 42%|████▏     | 8062/19299 [00:00<00:00, 12796.40it/s] 49%|████▊     | 9377/19299 [00:00<00:00, 12905.83it/s] 55%|█████▌    | 10672/19299 [00:00<00:00, 12789.63it/s] 62%|██████▏   | 11987/19299 [00:00<00:00, 12896.74it/s] 69%|██████▉   | 13324/19299 [00:01<00:00, 13028.99it/s] 76%|███████▌  | 14629/19299 [00:01<00:00, 12808.12it/s] 83%|████████▎ | 15931/19299 [00:01<00:00, 12870.71it/s] 89%|████████▉ | 17220/19299 [00:01<00:00, 12836.44it/s] 96%|█████████▋| 18588/19299 [00:01<00:00, 13086.62it/s]100%|██████████| 19299/19299 [00:01<00:00, 12947.86it/s]
+Total cycles: 23034
+Compute cycles: 19298
+Stall cycles: 0
+Overall utilization: 76.50%
+Mapping efficiency: 96.43%
+Average IFMAP SRAM BW: 48.958 words/cycle
+Average Filter SRAM BW: 4.298 words/cycle
+Average OFMAP SRAM BW: 50.771 words/cycle
+Average IFMAP DRAM BW: 34.045 words/cycle
+Average Filter DRAM BW: 4.605 words/cycle
+Average OFMAP DRAM BW: 51.327 words/cycle
+Saving traces: Done!
+
+Running Layer 19
+  0%|          | 0/5514 [00:00<?, ?it/s] 23%|██▎       | 1256/5514 [00:00<00:00, 12551.12it/s] 46%|████▌     | 2512/5514 [00:00<00:00, 11860.55it/s] 67%|██████▋   | 3701/5514 [00:00<00:00, 11833.04it/s] 90%|████████▉ | 4950/5514 [00:00<00:00, 12085.77it/s]100%|██████████| 5514/5514 [00:00<00:00, 11967.91it/s]
+Total cycles: 9002
+Compute cycles: 5513
+Stall cycles: 0
+Overall utilization: 79.34%
+Mapping efficiency: 100.00%
+Average IFMAP SRAM BW: 50.777 words/cycle
+Average Filter SRAM BW: 4.458 words/cycle
+Average OFMAP SRAM BW: 50.777 words/cycle
+Average IFMAP DRAM BW: 33.517 words/cycle
+Average Filter DRAM BW: 9.874 words/cycle
+Average OFMAP DRAM BW: 54.666 words/cycle
+Saving traces: Done!
+
+Running Layer 20
+  0%|          | 0/3676 [00:00<?, ?it/s] 32%|███▏      | 1186/3676 [00:00<00:00, 11854.50it/s] 65%|██████▍   | 2372/3676 [00:00<00:00, 11562.47it/s] 97%|█████████▋| 3554/3676 [00:00<00:00, 11677.48it/s]100%|██████████| 3676/3676 [00:00<00:00, 11814.65it/s]
+Total cycles: 7242
+Compute cycles: 3675
+Stall cycles: 0
+Overall utilization: 79.35%
+Mapping efficiency: 100.00%
+Average IFMAP SRAM BW: 50.782 words/cycle
+Average Filter SRAM BW: 4.458 words/cycle
+Average OFMAP SRAM BW: 50.782 words/cycle
+Average IFMAP DRAM BW: 28.992 words/cycle
+Average Filter DRAM BW: 9.621 words/cycle
+Average OFMAP DRAM BW: 55.529 words/cycle
+Saving traces: Done!
+
+Running Layer 21
+  0%|          | 0/33084 [00:00<?, ?it/s]  4%|▎         | 1208/33084 [00:00<00:02, 12078.40it/s]  7%|▋         | 2416/33084 [00:00<00:02, 11780.07it/s] 11%|█         | 3595/33084 [00:00<00:02, 11659.59it/s] 15%|█▍        | 4888/33084 [00:00<00:02, 12151.00it/s] 18%|█▊        | 6104/33084 [00:00<00:02, 11669.53it/s] 22%|██▏       | 7275/33084 [00:00<00:02, 11460.78it/s] 26%|██▌       | 8502/33084 [00:00<00:02, 11713.18it/s] 29%|██▉       | 9676/33084 [00:00<00:02, 11469.18it/s] 33%|███▎      | 10826/33084 [00:00<00:01, 11379.28it/s] 36%|███▌      | 11966/33084 [00:01<00:01, 11370.75it/s] 40%|███▉      | 13154/33084 [00:01<00:01, 11521.88it/s] 43%|████▎     | 14308/33084 [00:01<00:01, 11378.14it/s] 47%|████▋     | 15468/33084 [00:01<00:01, 11443.00it/s] 51%|█████     | 16724/33084 [00:01<00:01, 11774.23it/s] 54%|█████▍    | 17903/33084 [00:01<00:01, 11616.13it/s] 58%|█████▊    | 19066/33084 [00:01<00:01, 11586.20it/s] 61%|██████    | 20226/33084 [00:01<00:01, 11462.50it/s] 65%|██████▍   | 21381/33084 [00:01<00:01, 11487.97it/s] 68%|██████▊   | 22560/33084 [00:01<00:00, 11574.67it/s] 72%|███████▏  | 23719/33084 [00:02<00:00, 11577.71it/s] 76%|███████▌  | 24988/33084 [00:02<00:00, 11908.00it/s] 79%|███████▉  | 26180/33084 [00:02<00:00, 11765.42it/s] 83%|████████▎ | 27358/33084 [00:02<00:00, 11652.75it/s] 86%|████████▋ | 28555/33084 [00:02<00:00, 11745.68it/s] 90%|████████▉ | 29753/33084 [00:02<00:00, 11814.34it/s] 94%|█████████▎| 30935/33084 [00:02<00:00, 11773.43it/s] 97%|█████████▋| 32113/33084 [00:02<00:00, 11738.67it/s]100%|██████████| 33084/33084 [00:02<00:00, 11651.27it/s]
+Total cycles: 36706
+Compute cycles: 33083
+Stall cycles: 0
+Overall utilization: 79.33%
+Mapping efficiency: 100.00%
+Average IFMAP SRAM BW: 50.770 words/cycle
+Average Filter SRAM BW: 4.457 words/cycle
+Average OFMAP SRAM BW: 50.770 words/cycle
+Average IFMAP DRAM BW: 46.584 words/cycle
+Average Filter DRAM BW: 4.633 words/cycle
+Average OFMAP DRAM BW: 51.269 words/cycle
+Saving traces: Done!
+
+Running Layer 22
+  0%|          | 0/2872 [00:00<?, ?it/s] 53%|█████▎    | 1519/2872 [00:00<00:00, 15189.58it/s]100%|██████████| 2872/2872 [00:00<00:00, 15004.19it/s]
+Total cycles: 6474
+Compute cycles: 2871
+Stall cycles: 0
+Overall utilization: 47.09%
+Mapping efficiency: 100.00%
+Average IFMAP SRAM BW: 30.139 words/cycle
+Average Filter SRAM BW: 11.413 words/cycle
+Average OFMAP SRAM BW: 30.139 words/cycle
+Average IFMAP DRAM BW: 15.833 words/cycle
+Average Filter DRAM BW: 5.598 words/cycle
+Average OFMAP DRAM BW: 43.910 words/cycle
+Saving traces: Done!
+
+Running Layer 23
+  0%|          | 0/1436 [00:00<?, ?it/s]100%|██████████| 1436/1436 [00:00<00:00, 16314.02it/s]
+Total cycles: 3442
+Compute cycles: 1435
+Stall cycles: 0
+Overall utilization: 47.11%
+Mapping efficiency: 100.00%
+Average IFMAP SRAM BW: 30.149 words/cycle
+Average Filter SRAM BW: 11.417 words/cycle
+Average OFMAP SRAM BW: 30.149 words/cycle
+Average IFMAP DRAM BW: 9.709 words/cycle
+Average Filter DRAM BW: 9.621 words/cycle
+Average OFMAP DRAM BW: 84.623 words/cycle
+Saving traces: Done!
+
+Running Layer 24
+  0%|          | 0/12924 [00:00<?, ?it/s] 13%|█▎        | 1668/12924 [00:00<00:00, 16673.77it/s] 26%|██▌       | 3336/12924 [00:00<00:00, 16603.22it/s] 39%|███▉      | 5032/12924 [00:00<00:00, 16762.11it/s] 52%|█████▏    | 6710/12924 [00:00<00:00, 16765.69it/s] 65%|██████▌   | 8407/12924 [00:00<00:00, 16837.01it/s] 79%|███████▊  | 10153/12924 [00:00<00:00, 17047.03it/s] 92%|█████████▏| 11858/12924 [00:00<00:00, 16920.74it/s]100%|██████████| 12924/12924 [00:00<00:00, 16872.98it/s]
+Total cycles: 16650
+Compute cycles: 12923
+Stall cycles: 0
+Overall utilization: 47.08%
+Mapping efficiency: 100.00%
+Average IFMAP SRAM BW: 30.130 words/cycle
+Average Filter SRAM BW: 11.410 words/cycle
+Average OFMAP SRAM BW: 30.130 words/cycle
+Average IFMAP DRAM BW: 9.993 words/cycle
+Average Filter DRAM BW: 10.192 words/cycle
+Average OFMAP DRAM BW: 32.058 words/cycle
+Saving traces: Done!
+
+Running Layer 25
+  0%|          | 0/45952 [00:00<?, ?it/s]  3%|▎         | 1460/45952 [00:00<00:03, 14595.80it/s]  6%|▋         | 2962/45952 [00:00<00:02, 14843.67it/s] 10%|▉         | 4469/45952 [00:00<00:02, 14945.22it/s] 13%|█▎        | 5964/45952 [00:00<00:02, 14704.94it/s] 16%|█▌        | 7436/45952 [00:00<00:02, 14624.70it/s] 19%|█▉        | 8899/45952 [00:00<00:02, 14275.92it/s] 23%|██▎       | 10359/45952 [00:00<00:02, 14377.15it/s] 26%|██▌       | 11800/45952 [00:00<00:02, 14386.56it/s] 29%|██▉       | 13246/45952 [00:00<00:02, 14407.41it/s] 32%|███▏      | 14688/45952 [00:01<00:02, 14350.87it/s] 35%|███▌      | 16124/45952 [00:01<00:02, 14234.62it/s] 38%|███▊      | 17552/45952 [00:01<00:01, 14247.20it/s] 41%|████▏     | 19031/45952 [00:01<00:01, 14408.30it/s] 45%|████▍     | 20473/45952 [00:01<00:01, 14316.69it/s] 48%|████▊     | 21940/45952 [00:01<00:01, 14420.03it/s] 51%|█████     | 23466/45952 [00:01<00:01, 14670.47it/s] 54%|█████▍    | 24934/45952 [00:01<00:01, 14671.61it/s] 57%|█████▋    | 26402/45952 [00:01<00:01, 14488.18it/s] 61%|██████    | 27877/45952 [00:01<00:01, 14560.35it/s] 64%|██████▍   | 29334/45952 [00:02<00:01, 14391.27it/s] 67%|██████▋   | 30774/45952 [00:02<00:01, 14097.93it/s] 70%|███████   | 32192/45952 [00:02<00:00, 14118.20it/s] 73%|███████▎  | 33635/45952 [00:02<00:00, 14208.94it/s] 76%|███████▋  | 35131/45952 [00:02<00:00, 14429.95it/s] 80%|███████▉  | 36714/45952 [00:02<00:00, 14846.02it/s] 83%|████████▎ | 38200/45952 [00:02<00:00, 14681.36it/s] 86%|████████▋ | 39673/45952 [00:02<00:00, 14695.01it/s] 90%|████████▉ | 41144/45952 [00:02<00:00, 14591.40it/s] 93%|█████████▎| 42604/45952 [00:02<00:00, 14545.39it/s] 96%|█████████▋| 44292/45952 [00:03<00:00, 15236.84it/s]100%|█████████▉| 45897/45952 [00:03<00:00, 15478.38it/s]100%|██████████| 45952/45952 [00:03<00:00, 14612.09it/s]
+Total cycles: 49359
+Compute cycles: 45951
+Stall cycles: 0
+Overall utilization: 45.97%
+Mapping efficiency: 97.66%
+Average IFMAP SRAM BW: 30.129 words/cycle
+Average Filter SRAM BW: 11.142 words/cycle
+Average OFMAP SRAM BW: 29.423 words/cycle
+Average IFMAP DRAM BW: 28.294 words/cycle
+Average Filter DRAM BW: 11.117 words/cycle
+Average OFMAP DRAM BW: 30.142 words/cycle
+Saving traces: Done!
+************ SCALE SIM Run Complete ****************

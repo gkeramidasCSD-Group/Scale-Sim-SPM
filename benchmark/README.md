@@ -45,7 +45,7 @@ COMMON="--vanilla-repo /data/grizos/SCALE-Sim \
         --optimized-repo /data/grizos/Scale-Sim-SPM \
         --vanilla-venv-python /data/grizos/SCALE-Sim/venv/bin/python \
         --optimized-venv-python /data/grizos/Scale-Sim-SPM/venv/bin/python \
-        --results-root /data/grizos/Scale-Sim-SPM/benchmarks/results"
+        --results-root /data/grizos/Scale-Sim-SPM/benchmarks/results_new"
 
 # 1. Catches setup problems (bad paths, wrong venv, missing topology files,
 #    insufficient disk space) before anything long-running starts.

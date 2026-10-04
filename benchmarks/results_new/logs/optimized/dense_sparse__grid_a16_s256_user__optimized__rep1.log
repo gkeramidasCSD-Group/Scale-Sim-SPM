@@ -1,0 +1,49 @@
+$ /data/grizos/Scale-Sim-SPM/venv/bin/python /data/grizos/Scale-Sim-SPM/scalesim/scale.py -c /data/grizos/Scale-Sim-SPM/benchmarks/results_new/cfgs/dense_sparse__grid_a16_s256_user__optimized__rep1.cfg -t /data/grizos/Scale-Sim-SPM/topologies/sparsity/gemm.csv -l /data/grizos/Scale-Sim-SPM/layouts/conv_nets/test.csv -p /data/grizos/Scale-Sim-SPM/benchmarks/results_new/runs/optimized -i gemm -s N
+(cwd=/data/grizos/Scale-Sim-SPM)
+
+====================================================
+******************* SCALE SIM **********************
+====================================================
+Array Size: 	16x16
+SRAM IFMAP (kB): 	256
+SRAM Filter (kB): 	256
+SRAM OFMAP (kB): 	256
+Dataflow: 	Weight Stationary
+topology file path: 	/data/grizos/Scale-Sim-SPM/topologies/sparsity/gemm.csv
+layout file path: 	/data/grizos/Scale-Sim-SPM/layouts/conv_nets/test.csv
+Bandwidth: 	10
+Working in USE USER BANDWIDTH mode.
+====================================================
+
+Running Layer 0
+  0%|          | 0/49 [00:00<?, ?it/s]100%|██████████| 49/49 [00:00<00:00, 26114.47it/s]
+Total cycles: 62
+Compute cycles: 48
+Stall cycles: 0
+Overall utilization: 1.95%
+Mapping efficiency: 12.50%
+Average IFMAP SRAM BW: 24.000 words/cycle
+Average Filter SRAM BW: 0.833 words/cycle
+Average Filter Metadata SRAM BW: 0.052 words/cycle
+Average OFMAP SRAM BW: 0.312 words/cycle
+Average IFMAP DRAM BW: 10.000 words/cycle
+Average Filter DRAM BW: 10.000 words/cycle
+Average OFMAP DRAM BW: 7.500 words/cycle
+Saving traces: Done!
+
+Running Layer 1
+  0%|          | 0/47 [00:00<?, ?it/s]100%|██████████| 47/47 [00:00<00:00, 28561.62it/s]
+Total cycles: 59
+Compute cycles: 46
+Stall cycles: 0
+Overall utilization: 0.68%
+Mapping efficiency: 12.50%
+Average IFMAP SRAM BW: 22.261 words/cycle
+Average Filter SRAM BW: 0.870 words/cycle
+Average Filter Metadata SRAM BW: 0.054 words/cycle
+Average OFMAP SRAM BW: 0.109 words/cycle
+Average IFMAP DRAM BW: 10.000 words/cycle
+Average Filter DRAM BW: 10.000 words/cycle
+Average OFMAP DRAM BW: 5.000 words/cycle
+Saving traces: Done!
+************ SCALE SIM Run Complete ****************

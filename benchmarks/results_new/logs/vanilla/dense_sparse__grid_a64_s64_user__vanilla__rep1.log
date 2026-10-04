@@ -1,0 +1,49 @@
+$ /data/grizos/SCALE-Sim/venv/bin/python /data/grizos/SCALE-Sim/scalesim/scale.py -c /data/grizos/Scale-Sim-SPM/benchmarks/results_new/cfgs/dense_sparse__grid_a64_s64_user__vanilla__rep1.cfg -t /data/grizos/SCALE-Sim/topologies/sparsity/gemm.csv -l /data/grizos/SCALE-Sim/layouts/conv_nets/test.csv -p /data/grizos/Scale-Sim-SPM/benchmarks/results_new/runs/vanilla -i gemm -s N
+(cwd=/data/grizos/SCALE-Sim)
+
+====================================================
+******************* SCALE SIM **********************
+====================================================
+Array Size: 	64x64
+SRAM IFMAP (kB): 	64
+SRAM Filter (kB): 	64
+SRAM OFMAP (kB): 	64
+Dataflow: 	Weight Stationary
+topology file path: 	/data/grizos/SCALE-Sim/topologies/sparsity/gemm.csv
+layout file path: 	/data/grizos/SCALE-Sim/layouts/conv_nets/test.csv
+Bandwidth: 	10
+Working in USE USER BANDWIDTH mode.
+====================================================
+
+Running Layer 0
+  0%|          | 0/193 [00:00<?, ?it/s]100%|██████████| 193/193 [00:00<00:00, 10081.96it/s]
+Total cycles: 245
+Compute cycles: 192
+Stall cycles: 0
+Overall utilization: 0.03%
+Mapping efficiency: 0.78%
+Average IFMAP SRAM BW: 88.000 words/cycle
+Average Filter SRAM BW: 0.208 words/cycle
+Average Filter Metadata SRAM BW: 0.013 words/cycle
+Average OFMAP SRAM BW: 0.078 words/cycle
+Average IFMAP DRAM BW: 10.000 words/cycle
+Average Filter DRAM BW: 10.000 words/cycle
+Average OFMAP DRAM BW: 7.500 words/cycle
+Saving traces: Done!
+
+Running Layer 1
+  0%|          | 0/191 [00:00<?, ?it/s]100%|██████████| 191/191 [00:00<00:00, 9867.86it/s]
+Total cycles: 242
+Compute cycles: 190
+Stall cycles: 0
+Overall utilization: 0.01%
+Mapping efficiency: 0.78%
+Average IFMAP SRAM BW: 86.232 words/cycle
+Average Filter SRAM BW: 0.211 words/cycle
+Average Filter Metadata SRAM BW: 0.013 words/cycle
+Average OFMAP SRAM BW: 0.026 words/cycle
+Average IFMAP DRAM BW: 10.000 words/cycle
+Average Filter DRAM BW: 10.000 words/cycle
+Average OFMAP DRAM BW: 5.000 words/cycle
+Saving traces: Done!
+************ SCALE SIM Run Complete ****************
