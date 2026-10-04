@@ -125,6 +125,17 @@ DEFAULT_LOGS_DIR = os.path.join(_ONSRAM_DIR, 'logs')
 DEFAULT_CONFIG = os.path.join(os.path.dirname(_COSMA_DIR), 'configs', 'scale.cfg')
 CONV_LIKE_OPS = ('CONV2D', 'DEPTHWISE_CONV2D')
 
+# Bytes/element the SPM-budget check, SCALE-Sim buffer sizing, and DRAM
+# traffic are computed at (scale_sim_runner.BYTES_PER_ELEMENT) -- 'fp16' is
+# the paper's own hardware precision (Sec. 6) and matches this port's prior,
+# only behavior, kept as the default so omitting --precision reproduces
+# every previously-validated number unchanged. Does NOT touch
+# fom.py's own hardcoded bytes_per_element=2 in _infer_node_type(): that's a
+# preserved reference-implementation quirk for node-type classification
+# fidelity (see fom.py's module docstring), orthogonal to the actual
+# tensor/DRAM byte accounting this flag controls.
+PRECISION_BYTES = {'fp32': 4, 'fp16': 2, 'int8': 1}
+
 
 def _default_bandwidth_words_per_cycle(config_path: str) -> float:
     """
@@ -615,9 +626,10 @@ def _run_and_log(logs_dir, log_name: str, model_json_path: str, config_path: str
             log_file.close()
 
 
-def _summary_row(model_arg: str, spm_mb: float, stats: dict, log_path: str) -> dict:
+def _summary_row(model_arg: str, spm_mb: float, stats: dict, log_path: str,
+                  precision: str = '') -> dict:
     row = {
-        'model': model_arg, 'spm_mb': spm_mb, 'status': 'OK',
+        'model': model_arg, 'spm_mb': spm_mb, 'precision': precision, 'status': 'OK',
         'pinned': stats['pinned_count'], 'total_tensors': stats['total_tensors'],
         'peak_mb': round(stats['peak_bytes'] / 1024 / 1024, 4),
         'oversized': stats['oversized_count'],
@@ -630,9 +642,10 @@ def _summary_row(model_arg: str, spm_mb: float, stats: dict, log_path: str) -> d
     return row
 
 
-def _error_row(model_arg: str, spm_mb: float, error: Exception, log_path: str) -> dict:
+def _error_row(model_arg: str, spm_mb: float, error: Exception, log_path: str,
+               precision: str = '') -> dict:
     return {
-        'model': model_arg, 'spm_mb': spm_mb, 'status': 'ERROR',
+        'model': model_arg, 'spm_mb': spm_mb, 'precision': precision, 'status': 'ERROR',
         'pinned': '', 'total_tensors': '', 'peak_mb': '', 'oversized': '',
         'dram_reduction_pct': '', 'speedup': '',
         'log': log_path or '', 'error': f"{type(error).__name__}: {error}",
@@ -640,7 +653,7 @@ def _error_row(model_arg: str, spm_mb: float, error: Exception, log_path: str) -
 
 
 def print_table(rows: list) -> None:
-    cols = ['model', 'spm_mb', 'status', 'pinned', 'total_tensors', 'peak_mb',
+    cols = ['model', 'spm_mb', 'precision', 'status', 'pinned', 'total_tensors', 'peak_mb',
             'oversized', 'dram_reduction_pct', 'speedup', 'error']
     widths = {c: max(len(c), *(len(str(r[c])) for r in rows)) for c in cols}
     print('  '.join(c.ljust(widths[c]) for c in cols))
@@ -677,11 +690,17 @@ def _parse_args():
     parser.add_argument('--no-scale-sim', action='store_true',
                         help="Skip Phase D's real SCALE-Sim pass (scale_sim_runner.run_onsram_aware()) "
                              "and only run the fast pinning decision -- no DRAM-savings numbers.")
+    parser.add_argument('--precision', choices=sorted(PRECISION_BYTES), default='fp16',
+                        help="Bytes/element for the SPM-budget check, SCALE-Sim buffers, and DRAM "
+                             "traffic (default: fp16, the paper's own hardware precision -- matches "
+                             "every previously-validated number). Does not affect fom.py's own "
+                             "fixed node-type-classification quirk (see PRECISION_BYTES above).")
     return parser.parse_args()
 
 
 if __name__ == '__main__':
     args = _parse_args()
+    scale_sim_runner.BYTES_PER_ELEMENT = PRECISION_BYTES[args.precision]
     model_args = args.models or [DEFAULT_MODEL]
     logs_dir = None if args.no_logs else args.logs_dir
     run_scale_sim = not args.no_scale_sim
@@ -706,7 +725,8 @@ if __name__ == '__main__':
             model_json_path = resolve_model_arg(model_arg)
         except Exception as e:  # noqa: BLE001 -- one bad model shouldn't abort the whole sweep
             print(f"  FAILED to resolve model={model_arg}: {type(e).__name__}: {e}", flush=True)
-            rows.extend(_error_row(model_arg, spm_mb, e, log_path=None) for spm_mb in args.spm_mb)
+            rows.extend(_error_row(model_arg, spm_mb, e, log_path=None, precision=args.precision)
+                        for spm_mb in args.spm_mb)
             continue
         model_label = os.path.basename(model_arg.rstrip('/'))
 
@@ -724,7 +744,8 @@ if __name__ == '__main__':
                 bandwidth_bytes_per_cycle = _default_bandwidth_words_per_cycle(args.config)
             except Exception as e:  # noqa: BLE001 -- one bad model shouldn't abort the whole sweep
                 print(f"  FAILED SCALE-Sim baseline for {model_arg}: {type(e).__name__}: {e}", flush=True)
-                rows.extend(_error_row(model_arg, spm_mb, e, log_path=None) for spm_mb in args.spm_mb)
+                rows.extend(_error_row(model_arg, spm_mb, e, log_path=None, precision=args.precision)
+                            for spm_mb in args.spm_mb)
                 continue
             finally:
                 heartbeat_stop.set()
@@ -742,7 +763,7 @@ if __name__ == '__main__':
                     run_mobilenet_regression=is_mobilenet_regression,
                     layer_stats=layer_stats, bandwidth_bytes_per_cycle=bandwidth_bytes_per_cycle,
                     run_scale_sim=run_scale_sim)
-                rows.append(_summary_row(model_arg, spm_mb, stats, log_path))
+                rows.append(_summary_row(model_arg, spm_mb, stats, log_path, precision=args.precision))
                 dram_note = (f", DRAM -{stats['dram_traffic_reduction_pct']:.1f}%, "
                              f"speedup {stats['speedup']:.3f}x"
                              if 'dram_traffic_reduction_pct' in stats else "")
@@ -751,7 +772,7 @@ if __name__ == '__main__':
                       f"{dram_note}"
                       + (f"  (log: {log_path})" if log_path else ""), flush=True)
             except Exception as e:  # noqa: BLE001 -- one bad combination shouldn't abort the sweep
-                rows.append(_error_row(model_arg, spm_mb, e, log_path))
+                rows.append(_error_row(model_arg, spm_mb, e, log_path, precision=args.precision))
                 print(f"  FAILED: {type(e).__name__}: {e}"
                       + (f"  (log: {log_path})" if log_path else ""), flush=True)
                 continue

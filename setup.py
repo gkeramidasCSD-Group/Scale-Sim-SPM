@@ -21,7 +21,7 @@ setup(
     license="MIT",
     packages=find_packages(),
     include_package_data=False,                                 # The include_package_data argument controls whether non-code files are copied when your package is installed
-    install_requires=["numpy","configparser","absl-py", "tqdm", "pandas", "setuptools", "matplotlib", "cython", "numba", "pulp==3.3.2"],
+    install_requires=["numpy","configparser","absl-py", "tqdm", "pandas", "setuptools", "matplotlib", "cython", "numba", "pulp>=2.0,<4.0"],
     classifiers=[
         'Development Status :: 3 - Alpha',
         'Intended Audience :: Developers',
