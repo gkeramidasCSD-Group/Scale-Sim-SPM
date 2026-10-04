@@ -1,0 +1,44 @@
+[CALC] GoogLeNet, 16×16 array, 16 KB SRAMs: vanilla 1260.3s, optimized 704.0s (profiled), speedup 1.79x, optimized = 55.9% of vanilla
+    Hit/miss checks              vanilla   399.2s  31.7%   optimized   226.6s  32.2%
+    DRAM trace construction      vanilla   263.3s  20.9%   optimized   127.0s  18.0%
+    Trace file output            vanilla   142.7s  11.3%   optimized   142.8s  20.3%
+    Cycle loop & write buffer    vanilla   239.9s  19.0%   optimized   189.9s  27.0%
+    Progress-bar objects         vanilla   193.0s  15.3%   optimized     1.0s   0.1%
+    Setup & other                vanilla    22.2s   1.8%   optimized    16.6s   2.4%
+    fix #1   Per-cycle progress-bar objects   saved   230.2s =  41.4% of saving
+    fix #2   Prefetch-order diagonal flatten  saved     5.2s =   0.9% of saving
+    fix #3   CALC hit/miss lookup             saved   167.4s =  30.1% of saving
+    fix #4a  USER hit/miss lookup             saved     0.0s =   0.0% of saving
+    fix #4b  USER fetch-matrix layout         saved     0.0s =   0.0% of saving
+    fix #5   Read DRAM trace construction     saved    62.9s =  11.3% of saving
+    fix #6   Write DRAM trace construction    saved    56.5s =  10.2% of saving
+    unchanged code (run-to-run variation)      34.0s =   6.1%
+[USER] GoogLeNet, 32×32 array, 32 KB SRAMs: vanilla 1747.6s, optimized 413.8s (profiled), speedup 4.22x, optimized = 23.7% of vanilla
+    Hit/miss checks              vanilla   148.2s   8.5%   optimized    98.0s  23.7%
+    DRAM trace construction      vanilla  1199.6s  68.6%   optimized    70.0s  16.9%
+    Trace file output            vanilla   168.9s   9.7%   optimized   174.5s  42.2%
+    Cycle loop & write buffer    vanilla    58.2s   3.3%   optimized    45.4s  11.0%
+    Progress-bar objects         vanilla   137.0s   7.8%   optimized     0.3s   0.1%
+    Setup & other                vanilla    35.6s   2.0%   optimized    25.6s   6.2%
+    fix #1   Per-cycle progress-bar objects   saved   162.2s =  12.2% of saving
+    fix #2   Prefetch-order diagonal flatten  saved     4.1s =   0.3% of saving
+    fix #3   CALC hit/miss lookup             saved     0.0s =   0.0% of saving
+    fix #4a  USER hit/miss lookup             saved    21.0s =   1.6% of saving
+    fix #4b  USER fetch-matrix layout         saved    18.2s =   1.4% of saving
+    fix #5   Read DRAM trace construction     saved  1111.5s =  83.3% of saving
+    fix #6   Write DRAM trace construction    saved    14.8s =   1.1% of saving
+    unchanged code (run-to-run variation)       2.0s =   0.2%
+
+sweep: 36 model/config pairs where both finished; geomean speedup 1.97x, min 1.49x, max 17.00x
+sweep: max coefficient of variation over 3 runs 3.6%, median 1.0%
+sweep: simulated cycle counts identical in 50/50 pairs where both finished
+sweep: CALC geomean 1.81x over 25 pairs, range 1.51-3.14x
+sweep: USER geomean 2.38x over 11 pairs, range 1.49-17.00x
+sweep: 8 pairs where vanilla hit the 90-min timeout but optimized finished: alexnet/grid_a16_s16_user >=4.6x, alexnet/grid_a64_s16_user >=17.1x, googlenet/grid_a16_s16_user >=5.8x, googlenet/grid_a64_s16_user >=16.5x, mobilenet/grid_a16_s16_user >=8.4x, vit_b/grid_a16_s16_user >=7.6x, vit_b/grid_a64_s16_user >=6.9x, transformer/grid_a64_s16_user >=2.2x
+    CALC 32×32, 64 KB (default)   geomean 1.70x (n=5)
+    CALC 16×16, 16 KB             geomean 2.25x (n=5)
+    CALC 16×16, 256 KB            geomean 1.78x (n=5)
+    CALC 64×64, 16 KB             geomean 1.79x (n=5)
+    CALC 64×64, 256 KB            geomean 1.58x (n=5)
+    USER 16×16, 256 KB            geomean 2.20x (n=5)
+    USER 64×64, 256 KB            geomean 1.73x (n=5)

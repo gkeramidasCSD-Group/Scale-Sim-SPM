@@ -1,0 +1,9 @@
+run:       smokegemm_a32_s64_user
+config:    /home/george/Desktop/SCALE-Sim/benchmark/cprofile_compare/configs/smokegemm_a32_s64_user.cfg
+topology:  /tmp/claude-1000/-home-george-Desktop-SCALE-Sim/64074a31-523b-4d83-b5cc-a9ffc24380d8/scratchpad/smoke/smokegemm.csv  (input type: gemm)
+vanilla:   /home/george/Music/SCALE-Sim  (python3)
+optimized: /home/george/Desktop/SCALE-Sim  (python3)
+outputs:   /tmp/scalesim_cprofile/smokegemm_a32_s64_user   parallel=1
+
+[optimized] started (pid 1419435), per-layer progress: /tmp/scalesim_cprofile/smokegemm_a32_s64_user/optimized/layers.log
+[vanilla] started (pid 1419438), per-layer progress: /tmp/scalesim_cprofile/smokegemm_a32_s64_user/vanilla/layers.log

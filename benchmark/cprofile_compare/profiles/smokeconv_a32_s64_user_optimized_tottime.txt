@@ -1,0 +1,50 @@
+Sat Sep 26 21:29:34 2026    /home/george/Desktop/SCALE-Sim/benchmark/cprofile_compare/profiles/smokeconv_a32_s64_user_optimized.pstats
+
+         3732801 function calls (3732754 primitive calls) in 3.663 seconds
+
+   Ordered by: internal time
+   List reduced from 513 to 40 due to restriction <40>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+   401408    0.607    0.000    0.794    0.000 /home/george/Desktop/SCALE-Sim/scalesim/memory/write_buffer.py:126(store_to_trace_mat_cache)
+        6    0.520    0.087    0.561    0.094 /home/george/.local/lib/python3.10/site-packages/numpy/lib/npyio.py:1390(savetxt)
+        2    0.367    0.183    0.469    0.234 /home/george/Desktop/SCALE-Sim/scalesim/memory/read_buffer.py:177(prepare_hashed_buffer)
+   405516    0.353    0.000    0.653    0.000 /home/george/Desktop/SCALE-Sim/scalesim/memory/read_buffer.py:236(active_buffer_hit)
+    25840    0.350    0.000    1.081    0.000 /home/george/Desktop/SCALE-Sim/scalesim/memory/read_buffer.py:277(service_reads)
+        1    0.235    0.235    2.435    2.435 /home/george/Desktop/SCALE-Sim/scalesim/memory/double_buffered_scratchpad_mem.py:234(service_memory_requests)
+    12920    0.227    0.000    1.048    0.000 /home/george/Desktop/SCALE-Sim/scalesim/memory/write_buffer.py:231(service_writes)
+    80307    0.139    0.000    0.180    0.000 /home/george/.local/lib/python3.10/site-packages/numpy/core/numeric.py:136(ones)
+   405561    0.116    0.000    0.116    0.000 {method 'get' of 'dict' objects}
+   729814    0.109    0.000    0.109    0.000 /home/george/Desktop/SCALE-Sim/scalesim/memory/read_buffer.py:272(<genexpr>)
+    38783    0.066    0.000    0.066    0.000 {built-in method numpy.asarray}
+        1    0.063    0.063    0.064    0.064 /home/george/Desktop/SCALE-Sim/scalesim/compute/operand_matrix.py:195(calc_ifmap_elem_addr)
+   405518    0.063    0.000    0.150    0.000 {built-in method builtins.any}
+   204800    0.060    0.000    0.060    0.000 {method 'setdefault' of 'dict' objects}
+        1    0.037    0.037    0.044    0.044 /home/george/Desktop/SCALE-Sim/scalesim/compute/systolic_compute_ws.py:127(create_ifmap_prefetch_mat)
+   121922    0.033    0.000    0.033    0.000 {method 'write' of '_io.TextIOWrapper' objects}
+    77557    0.032    0.000    0.032    0.000 {method 'reshape' of 'numpy.ndarray' objects}
+    80325    0.031    0.000    0.031    0.000 {built-in method numpy.empty}
+   243746    0.027    0.000    0.027    0.000 {method 'append' of 'list' objects}
+   204803    0.021    0.000    0.021    0.000 {method 'add' of 'set' objects}
+        1    0.019    0.019    3.074    3.074 /home/george/Desktop/SCALE-Sim/scalesim/single_layer_sim.py:186(run)
+    19255    0.019    0.000    0.019    0.000 {built-in method builtins.max}
+       12    0.016    0.001    0.018    0.002 /home/george/Desktop/SCALE-Sim/scalesim/memory/read_buffer.py:453(new_prefetch)
+        1    0.015    0.015    0.015    0.015 /home/george/Desktop/SCALE-Sim/scalesim/memory/double_buffered_scratchpad_mem.py:520(get_filter_sram_start_stop_cycles)
+    81218    0.011    0.000    0.011    0.000 /home/george/Desktop/SCALE-Sim/scalesim/memory/read_buffer.py:274(<genexpr>)
+       13    0.011    0.001    0.011    0.001 /home/george/Desktop/SCALE-Sim/scalesim/memory/write_buffer.py:300(<listcomp>)
+    80318    0.010    0.000    0.010    0.000 /home/george/.local/lib/python3.10/site-packages/numpy/core/multiarray.py:1080(copyto)
+        1    0.009    0.009    0.012    0.012 /home/george/Desktop/SCALE-Sim/scalesim/compute/systolic_compute_ws.py:231(create_ifmap_demand_mat)
+        1    0.007    0.007    0.011    0.011 /home/george/Desktop/SCALE-Sim/scalesim/compute/systolic_compute_ws.py:423(create_ofmap_demand_mat)
+    13009    0.006    0.000    0.006    0.000 {built-in method numpy.zeros}
+    40147    0.006    0.000    0.006    0.000 /home/george/.local/lib/python3.10/site-packages/numpy/core/multiarray.py:153(concatenate)
+     6309    0.005    0.000    0.005    0.000 {built-in method numpy.arange}
+       11    0.005    0.000    0.006    0.001 /home/george/.local/lib/python3.10/site-packages/numpy/core/numeric.py:274(full)
+        1    0.005    0.005    0.006    0.006 /home/george/Desktop/SCALE-Sim/scalesim/compute/systolic_compute_ws.py:334(create_filter_demand_mat)
+       15    0.005    0.000    0.005    0.000 /home/george/.local/lib/python3.10/site-packages/numpy/lib/shape_base.py:612(column_stack)
+       16    0.005    0.000    0.005    0.000 {method 'close' of '_io.TextIOWrapper' objects}
+       48    0.004    0.000    0.004    0.000 /home/george/Desktop/SCALE-Sim/scalesim/memory/write_buffer.py:199(_append_chunk_to_trace_matrix)
+        1    0.004    0.004    0.004    0.004 /home/george/Desktop/SCALE-Sim/scalesim/compute/operand_matrix.py:247(calc_ofmap_elem_addr)
+        8    0.003    0.000    0.007    0.001 /home/george/Desktop/SCALE-Sim/scalesim/compute/systolic_compute_ws.py:609(skew_matrix)
+        1    0.003    0.003    0.003    0.003 {built-in method posix.system}
+
+

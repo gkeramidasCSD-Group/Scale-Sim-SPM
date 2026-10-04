@@ -12,6 +12,7 @@
 #   BW                InterfaceBandwidth: CALC or USER       [CALC]
 #   DATAFLOW          ws | os | is                           [ws]
 #   CFG               use this .cfg instead of generating one from the four values above
+#   INPUT_TYPE        conv | gemm   [auto: gemm if the topology header is "Layer,M,N,K"]
 #   OUT               scratch dir for run outputs            [/tmp/scalesim_cprofile/<name>]
 #   PARALLEL          1 = run both versions at the same time (server); 0 = one after the other [0]
 #   MIN_FREE_MB       watchdog: kill a run if MemAvailable drops below this   [700]
@@ -46,6 +47,10 @@ for r in "$VANILLA_REPO" "$OPTIMIZED_REPO"; do
 done
 [ -f "$TOPO" ] || { echo "topology not found: $TOPO"; exit 1; }
 case "$BW" in CALC|USER) ;; *) echo "BW must be CALC or USER"; exit 1;; esac
+if [ -z "$INPUT_TYPE" ]; then
+  second_col=$(head -1 "$TOPO" | tr -d '\r\357\273\277' | cut -d, -f2 | tr -d ' ')
+  [ "$second_col" = M ] && INPUT_TYPE=gemm || INPUT_TYPE=conv
+fi
 
 if [ -n "$CFG" ]; then
   CFG=$(readlink -f "$CFG")
@@ -102,7 +107,7 @@ RUN_NAME=$(awk -F'=' '/^run_name/{gsub(/ /,"",$2); print $2}' "$CFG")
 
 echo "run:       $NAME"
 echo "config:    $CFG"
-echo "topology:  $TOPO"
+echo "topology:  $TOPO  (input type: $INPUT_TYPE)"
 echo "vanilla:   $VANILLA_REPO  ($VANILLA_PYTHON)"
 echo "optimized: $OPTIMIZED_REPO  ($OPTIMIZED_PYTHON)"
 echo "outputs:   $OUT   parallel=$PARALLEL"
@@ -115,7 +120,7 @@ TIME_V=""; [ -x /usr/bin/time ] && TIME_V="/usr/bin/time -v"
 launch() {  # launch <tag> <repo> <python>; sets LAUNCHED_PID
   local tag=$1 repo=$2 py=$3
   rm -rf "$OUT/$tag"
-  (cd "$repo" && exec $TIME_V "$py" "$D/profile_network.py" "$repo" "$tag" "$OUT/$tag" "$CFG" "$TOPO") \
+  (cd "$repo" && exec $TIME_V "$py" "$D/profile_network.py" "$repo" "$tag" "$OUT/$tag" "$CFG" "$TOPO" "$INPUT_TYPE") \
     > "$OUT/$tag.log" 2>&1 &
   LAUNCHED_PID=$!
   echo "[$tag] started (pid $LAUNCHED_PID), per-layer progress: $OUT/$tag/layers.log"
@@ -164,7 +169,7 @@ REPORT=$D/profiles/${NAME}_report.md
 {
   echo "# cProfile: $NAME"
   echo
-  echo "- topology: \`$TOPO\`"
+  echo "- topology: \`$TOPO\` ($INPUT_TYPE)"
   echo "- config: array ${ARRAY}x${ARRAY}, SRAM ${SRAM_KB} KB, InterfaceBandwidth $BW, dataflow $DATAFLOW (\`$CFG\`)"
   echo "- vanilla: \`$VANILLA_REPO\`; optimized: \`$OPTIMIZED_REPO\`; parallel=$PARALLEL; host $(hostname); $(date -Iseconds)"
   for tag in vanilla optimized; do

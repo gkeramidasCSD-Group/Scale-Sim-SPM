@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Profile one SCALE-Sim checkout on a full network with cProfile, on a low-RAM machine.
 
-usage: profile_network.py <repo_root> <tag> <out_dir> <config.cfg> <topology.csv>
+usage: profile_network.py <repo_root> <tag> <out_dir> <config.cfg> <topology.csv> [conv|gemm]
 
 Stock SCALE-Sim keeps every layer's simulation objects (demand matrices, SRAM/DRAM trace
 matrices) alive until the whole network finishes, so peak RAM grows with the network's total
@@ -17,6 +17,7 @@ unchanged. The simulation code itself is not modified.
 import cProfile, gc, hashlib, os, sys, time
 
 repo, tag, out, cfg, topo = sys.argv[1:6]
+input_type = sys.argv[6] if len(sys.argv) > 6 else "conv"  # gemm: topology has an M,N,K header
 sys.path.insert(0, repo)
 import scalesim
 assert os.path.realpath(scalesim.__file__).startswith(os.path.realpath(repo)), scalesim.__file__
@@ -71,9 +72,9 @@ def save_traces_and_free(self, top_path, *args, **kwargs):
 
 single_layer_sim.save_traces = save_traces_and_free
 
-emit(f"[{tag}] scalesim imported from {scalesim.__file__}")
+emit(f"[{tag}] scalesim imported from {scalesim.__file__} (input type: {input_type})")
 s = Sim(save_disk_space=False, verbose=False, config=cfg, topology=topo,
-        layout=os.path.join(repo, "layouts/conv_nets/test.csv"), input_type_gemm=False)
+        layout=os.path.join(repo, "layouts/conv_nets/test.csv"), input_type_gemm=(input_type == "gemm"))
 pr.enable()
 s.run_scale(top_path=out)
 pr.disable()
