@@ -15,9 +15,15 @@ topologies/conv_nets/Resnet18.csv), or an exported model.json (e.g.
 cosma/_exported/MobileNet/model.json) -- converted to a topology CSV via
 cosma/helpers/topology_builder.build_topology(), the same converter
 COSMA/OnSRAM already use, so this doesn't duplicate that logic. Only
-CONV2D/DEPTHWISE_CONV2D/CONV_3D layers are simulated either way -- FC
-layers are dropped (same known gap already flagged in
-smm/docs/smm_model_roster.md and shared with cosma/onsram's own ports).
+CONV2D/DEPTHWISE_CONV2D/CONV_3D layers get a real, cycle-simulated
+topology row either way. For a model.json input, DENSE (FC) layers are
+additionally costed analytically (smm_helpers/dense_costing.py, the exact
+same formula cosma/onsram already use for DENSE) and added equally to
+every scheme's totals -- see that module's docstring for why DENSE is
+costed this way instead of through real simulation like conv layers. A
+bare topology CSV (no model.json, e.g. the hand-built
+smm/topologies/resnet18_same_padded.csv) has no DENSE layer metadata
+available and stays conv-only.
 
 Usage:
   python3 smm/run_smm.py --model topologies/conv_nets/Resnet18.csv --glb_kb 64
@@ -37,9 +43,16 @@ if _REPO_ROOT not in sys.path:
 
 from smm.smm_helpers.baseline import run_baseline, BASELINE_RATIOS
 from smm.smm_helpers.scale_sim_runner import SMMScaleSimRunner
+from smm.smm_helpers.dense_costing import cost_dense_layers_in_model
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_CONFIG = os.path.join(_REPO_ROOT, 'configs', 'scale_smm.cfg')
+
+# Bytes/element for the baseline, Hom/Het, and DENSE costing paths alike --
+# 'int8' is the paper's own hardware (Sec. 4: "the data width is 8-bits")
+# and this port's prior, only behavior, kept as the default so omitting
+# --precision reproduces every previously-validated number unchanged.
+PRECISION_BYTES = {'fp32': 4, 'fp16': 2, 'int8': 1}
 
 
 def _resolve_topology_csv(model_arg: str, scratch_dir: str) -> str:
@@ -57,15 +70,21 @@ def _resolve_topology_csv(model_arg: str, scratch_dir: str) -> str:
 
 
 def _run_one_glb(topology_csv: str, config_file: str, glb_kb: int, objective: str,
-                  skip_baseline: bool, out_dir: str):
+                  skip_baseline: bool, out_dir: str, dense_totals: dict = None,
+                  bytes_per_elem: int = 1):
     print(f"\n{'#' * 90}\n# GLB = {glb_kb} kB, objective = {objective}\n{'#' * 90}")
+
+    dense_cycles = dense_totals['compute_cycles'] if dense_totals else 0
+    dense_bytes = dense_totals['total_dram_bytes'] if dense_totals else 0
 
     rows = []
 
     if not skip_baseline:
         for ratio_name in BASELINE_RATIOS:
-            res = run_baseline(topology_csv, config_file, glb_kb, ratio_name)
-            rows.append((ratio_name, res.total_cycles, res.total_dram_bytes))
+            res = run_baseline(topology_csv, config_file, glb_kb, ratio_name,
+                                word_size=bytes_per_elem)
+            rows.append((ratio_name, res.total_cycles + dense_cycles,
+                         res.total_dram_bytes + dense_bytes))
 
     for homogeneous, label in [(False, 'Het'), (True, 'Hom')]:
         runner = SMMScaleSimRunner(
@@ -73,11 +92,16 @@ def _run_one_glb(topology_csv: str, config_file: str, glb_kb: int, objective: st
             objective=objective, homogeneous=homogeneous, allow_prefetch=True,
             output_dir=os.path.join(out_dir, f'{label}_{glb_kb}kb'),
             verbose=False, save_ifmap_trace=False, save_filter_trace=False,
-            save_ofmap_trace=False,
+            save_ofmap_trace=False, bytes_per_elem=bytes_per_elem,
         )
         runner.run()
         totals = runner.get_actual_totals()
-        rows.append((f'{label}_{objective}', totals['total_cycles'], totals['total_dram_bytes']))
+        rows.append((f'{label}_{objective}', totals['total_cycles'] + dense_cycles,
+                     totals['total_dram_bytes'] + dense_bytes))
+
+    if dense_totals and dense_totals['num_dense_layers']:
+        print(f"[SMM] +{dense_totals['num_dense_layers']} DENSE layer(s), analytically costed: "
+              f"+{dense_cycles} cycles, +{dense_bytes/1024:.1f} kB DRAM (added to every scheme below)")
 
     print(f"\n{'scheme':<18} {'cycles':>14} {'dram_bytes':>14} {'dram_MB':>10}")
     best_baseline_bytes = min((b for name, _, b in rows if name.startswith('sa_')), default=None)
@@ -100,14 +124,30 @@ def main():
     p.add_argument('--skip-baseline', action='store_true',
                     help='Skip the 3 fixed-partition baselines (Hom/Het only, faster)')
     p.add_argument('--out', default=os.path.join(HERE, 'results', 'run_smm_out'))
+    p.add_argument('--precision', choices=sorted(PRECISION_BYTES), default='int8',
+                    help="Bytes/element for the baseline, Hom/Het, and DENSE-costing paths "
+                         "alike (default: int8, the paper's own hardware -- matches every "
+                         "previously-validated number).")
     args = p.parse_args()
 
     os.makedirs(args.out, exist_ok=True)
+    bytes_per_elem = PRECISION_BYTES[args.precision]
+
+    dense_totals = None
+    if args.model.endswith('.json'):
+        from scalesim.scale_config import scale_config as ScaleConfig
+        cfg = ScaleConfig()
+        cfg.read_conf_file(args.config)
+        array_dims = cfg.get_array_dims()
+        dense_totals = cost_dense_layers_in_model(args.model, array_dims,
+                                                   bytes_per_element=bytes_per_elem)
+
     with tempfile.TemporaryDirectory() as scratch:
         topology_csv = _resolve_topology_csv(args.model, scratch)
         for glb_kb in args.glb_kb:
             _run_one_glb(topology_csv, args.config, glb_kb, args.objective,
-                         args.skip_baseline, args.out)
+                         args.skip_baseline, args.out, dense_totals,
+                         bytes_per_elem=bytes_per_elem)
 
 
 if __name__ == '__main__':

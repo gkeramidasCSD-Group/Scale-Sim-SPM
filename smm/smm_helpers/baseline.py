@@ -103,12 +103,14 @@ class BaselineResult:
 
 
 def run_baseline(topology_file: str, config_file: str, glb_size_kb: int,
-                  ratio_name: str = 'sa_50_50') -> BaselineResult:
+                  ratio_name: str = 'sa_50_50', word_size: int = 1) -> BaselineResult:
     """
     Runs every conv layer of topology_file through a plain (unmodified)
     SCALE-Sim simulation with the fixed ifmap/filter/ofmap partition
     BASELINE_RATIOS[ratio_name] implies for a GLB of glb_size_kb kB --
-    the paper's own baseline (Sec. 4), word-for-word.
+    the paper's own baseline (Sec. 4), word-for-word at the default
+    word_size=1 (the paper's own 8-bit hardware, Sec. 4). word_size is a
+    cross-paper-benchmark parameter, not something the paper itself varies.
     """
     ifmap_frac, filter_frac = BASELINE_RATIOS[ratio_name]
     glb_bytes = glb_size_kb * 1024
@@ -126,7 +128,7 @@ def run_baseline(topology_file: str, config_file: str, glb_size_kb: int,
         sim.set_params(layer_id=lid, config_obj=config, topology_obj=topo,
                         layout_obj=layout, verbose=False)
         mem_sys = _make_baseline_memory_system(config, topo, lid, glb_bytes,
-                                                ifmap_frac, filter_frac)
+                                                ifmap_frac, filter_frac, word_size=word_size)
         sim.set_memory_system(mem_sys)
         sim.run()
 

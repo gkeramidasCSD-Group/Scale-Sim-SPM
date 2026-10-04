@@ -106,6 +106,9 @@ class SMMScaleSimRunner:
         save_ifmap_trace: bool = True,
         save_filter_trace: bool = True,
         save_ofmap_trace: bool = True,
+        bytes_per_elem: int   = 1,   # paper's own 8-bit hardware (Sec. 4); a
+                                     # cross-paper-benchmark parameter, not
+                                     # something the paper itself varies.
     ):
         self.topology_file  = topology_file
         self.config_file    = config_file
@@ -137,7 +140,7 @@ class SMMScaleSimRunner:
         bw = (float(self.config.get_bandwidths_as_list()[0])
               if bw_user else 16.0)
         self.hw = HwParams(
-            bytes_per_elem     = 1,
+            bytes_per_elem     = bytes_per_elem,
             mac_per_cycle      = float(arr_rows * arr_cols),
             bw_bytes_per_cycle = bw,
         )

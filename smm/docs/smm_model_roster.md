@@ -24,26 +24,37 @@ shortcut conv in a residual block).
 
 | Model | Layers (paper) | Layer types | Available now? | Notes |
 |---|---|---|---|---|
-| **MobileNet** | 28 | CV, DW, PW, FC | ✅ `_exported/MobileNet/model.json` | Ready to run today — same artifact OnSRAM's roster uses as "MobileNetV1" |
-| **MobileNetV2** | 53 | CV, DW, PW, FC | ✅ `_exported/MobileNetV2/model.json` | Ready to run today |
-| **EfficientNetB0** | 82 | CV, DW, PW, FC | ⚠️ `_exported/efficient50/model.json` | An EfficientNet variant is exported (confirmed via its ops: SIGMOID+MUL Swish-activation pattern, 243 layers) — but the folder name ("efficient50") doesn't confirm it's specifically B0 vs. a different compound-scaling variant. Same "paper doesn't pin the exact variant" caveat COSMA's roster already makes for DenseNet. |
-| GoogLeNet | 64 | CV, PW, FC | ❌ not sourced | Same gap OnSRAM's own roster already flags for this model |
-| MnasNet | 53 | CV, DW, PW, FC | ❌ not sourced | Would need exporting first |
-| ResNet18 | 21 | CV, PW, FC, PL | ❌ not sourced | We have ResNet-50 and ResNet-20-CIFAR10 exported, not ResNet-18 specifically |
+| **MobileNet** | 28 | CV, DW, PW, FC | ✅ `_exported/MobileNet/model.json` | Ready to run today — same artifact OnSRAM's roster uses as "MobileNetV1". Its exported classifier is actually a 1×1 CONV2D, not a real DENSE op (confirmed 2026-10-04) — already fully covered by the topology-row path, no DENSE-costing needed for this one specifically. |
+| **MobileNetV2** | 53 | CV, DW, PW, FC | ✅ `_exported/MobileNetV2/model.json` | Ready to run today. Has 1 real DENSE classifier layer — smoke-tested 2026-10-04 with `dense_costing.py`, correct. |
+| **GoogLeNet** | 64 | CV, PW, FC | ✅ `_exported/GoogLeNet/model.json` | **Correction (2026-10-04): this roster's "not sourced" claim went stale** — the export exists (82 layers: 57 CONV2D, 1 DENSE, MAXPOOL, CONCAT for the inception branches; dated 2026-09-26, 10 days after this roster's own "checked against `_exported/` on 2026-09-16" line above), presumably added for the same gap OnSRAM's/COSMA's own rosters flagged. Not yet run through `run_smm.py`. MAXPOOL/CONCAT get no topology row (shared, pre-existing gap across all three papers' ports, same treatment as everywhere else non-conv ops appear) — only the DENSE classifier needed this session's new costing. |
+| **EfficientNetB0** | 82 | CV, DW, PW, FC | ⚠️ `_exported/efficient50/model.json` | An EfficientNet variant is exported (confirmed via its ops: SIGMOID+MUL Swish-activation pattern, 1 real DENSE classifier layer) — but the folder name ("efficient50") doesn't confirm it's specifically B0 vs. a different compound-scaling variant. Same "paper doesn't pin the exact variant" caveat COSMA's roster already makes for DenseNet. |
+| MnasNet | 53 | CV, DW, PW, FC | ❌ not sourced | Re-checked 2026-10-04, still genuinely absent from `_exported/` (no MnasNet-named directory of any kind) — would need exporting first |
+| ResNet18 | 21 | CV, PW, FC, PL | ❌ not sourced (as a model.json) | Re-checked 2026-10-04, still genuinely absent — `_exported/` has ResNet-50, ResNet-20-CIFAR10, ResNeXt-50, R(2+1)D, but no ResNet-18. Our own hand-built `smm/topologies/resnet18_same_padded.csv` (conv-only, no model.json, no DENSE metadata available) stands in for this one — see `smm_verification.md`. |
 
 ## 2. Summary
 
-**2 of 6 ready to run right now** (MobileNet, MobileNetV2), **1 more likely available but
-variant-unconfirmed** (EfficientNetB0-ish), **3 not sourced** (GoogLeNet, MnasNet, ResNet-18) —
-GoogLeNet's gap is now shared across all three paper rosters in this repo (COSMA doesn't list it
-at all, OnSRAM and SMM both want it, neither has it).
+**4 of 6 ready to run right now as real model.json exports** (MobileNet, MobileNetV2, GoogLeNet,
+and EfficientNetB0 modulo the variant caveat), **2 not sourced** (MnasNet, ResNet-18 — ResNet18
+has a separate, hand-built conv-only stand-in instead, not a true model.json). The "GoogLeNet gap
+shared across all three paper rosters" note from the original 2026-09-16 check no longer holds —
+re-verify against `cosma/_exported/` directly (`ls`) rather than trusting this file's own prior
+summary line, since it's already gone stale once.
 
-**Every one of this paper's 6 models includes FC (fully-connected) layers** — unlike COSMA/OnSRAM,
-where FC-head coverage varies per model, the SMM paper's Table 2 lists FC for all 6. That makes
-DENSE-as-1×1-conv support (discussed for COSMA/OnSRAM) the single highest-leverage engine addition
-for this paper specifically — without it, every one of these 6 models' classifier head is
-zero-cost, understating both papers' latency and DRAM totals for the same reason (see the
-model-coverage discussion in this conversation).
+**Every one of this paper's 6 models includes FC (fully-connected) layers** per the paper's own
+Table 2 — but **not every exported model.json represents that head as a real DENSE op**. Checked
+directly (2026-10-04): MobileNet(v1)'s exported classifier is a 1×1 CONV2D
+(`REDUCE_MEAN -> CONV2D[1024->1000] -> SOFTMAX`), not DENSE at all — it was never actually dropped,
+since `topology_builder.build_topology()` already emits a row for any CONV2D regardless of spatial
+size. MobileNetV2 and EfficientNetB0 (`efficient50`) each have exactly 1 real DENSE layer in their
+exports. **DENSE support is now implemented** (`smm_helpers/dense_costing.py`, wired into
+`run_smm.py` for any `.json` model input) — analytically, deliberately matching COSMA/OnSRAM's own
+`_nonconv_layer_stats()` DENSE formula rather than real-simulating it (SMM's own policies have no
+spatial-reuse distinction to offer on a layer with no spatial extent, and real-simulating a large
+DENSE layer risks the same SCALE-Sim OOM COSMA's own code already documents hitting on AlexNet —
+see `smm_implementation.md` §3 and `dense_costing.py`'s docstring for the full reasoning). Smoke-
+tested on MobileNetV2 (2026-10-04): correctly detected 1 DENSE layer, costed it at +161,280 cycles
+/ +1253.2kB (matching its known 1280→1000 classifier shape almost exactly), added identically to
+every scheme (baseline/Hom/Het) in the comparison table.
 
 ## 3. Config note (for matching the paper's own baseline, once ported)
 
