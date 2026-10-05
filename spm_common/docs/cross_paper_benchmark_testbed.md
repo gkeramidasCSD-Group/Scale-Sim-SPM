@@ -145,28 +145,95 @@ today.
 
 | Model | COSMA | OnSRAM | SMM | Why it's in the matrix |
 |---|---|---|---|---|
-| GoogLeNet | ✅ | ✅ | ✅ | Only true 3-way match — the head-to-head anchor model for every stage, including the array×bandwidth axis |
-| MobileNetV2 | ✅ (CIFAR-10 variant — flag input-resolution mismatch vs. the other two) | ✅ | ✅ | Depthwise/grouped-conv-heavy, memory-bound — OnSRAM's and SMM's claimed sweet spot |
-| ResNeXt-50 | ✅ (COSMA's strongest claimed win: 85.6% DRAM reduction, 2.86× speedup at tight budget) | ✅ (paper's 2nd-strongest claim, 3.81×) | ❌ | High tensor reuse / skip connections — the regime where COSMA's ILP generality should beat OnSRAM's greedy heuristic, if it does |
-| SqueezeNet (small / 1.1) | ✅ | ✅ | ❌ | Compute-bound control case — low expected benefit for either |
-| ResNet family | ResNet-20-CIFAR10 (COSMA's documented *non*-win: linear chain, nothing to reuse) | ResNet-50 | ResNet-18 | Report as **three separate rows, explicitly labeled by variant** — different depths and datasets, never implied equivalent |
+| GoogLeNet | ✅ (224×224, full resolution — large budget tier, §4.1) | ✅ (same) | ✅ | 3-way match — anchor model for every stage, including the array×bandwidth axis |
+| **ResNet-18** | ✅ (224×224 — large tier) | ✅ (same) | ✅ | **Added 2026-10-05** via `spm_common/source_torchvision_model.py` (real torchvision architecture, not hand-built — see §3.1). Second 3-way match, same quality as GoogLeNet — supersedes the old mismatched COSMA-ResNet-20-CIFAR10/OnSRAM-ResNet-50/SMM-hand-built-stand-in situation for the "ResNet family" row. |
+| MobileNetV2 | ✅ (224×224 — **correction**: not a CIFAR-10 variant; COSMA's own 14-model paper roster doesn't include MobileNetV2 at all, it's simply available as a shared `model.json`, full ImageNet resolution, same as the other two) | ✅ | ✅ | Depthwise/grouped-conv-heavy, memory-bound — OnSRAM's and SMM's claimed sweet spot |
+| ResNeXt-50 | ✅ (224×224 — large tier, needs its *upper* end: ≥16MB, §4.1) | ✅ (paper's 2nd-strongest claim, 3.81×) | ❌ | High tensor reuse / skip connections — the regime where COSMA's ILP generality should beat OnSRAM's greedy heuristic, if it does |
+| SqueezeNet | ✅ (COSMA's own variant is **CIFAR-100-scale**, `_exported/squeezenet_small_cifar100_...` — small budget tier) | ✅ (OnSRAM's is SqueezeNet1.1, 224×224 — large tier) | ❌ | Compute-bound control case — low expected benefit for either; **the two papers' SqueezeNet entries are at different resolutions and different budget tiers, not a shared axis** — report as two separate rows, same as the old ResNet-family split |
+| ResNet-20-CIFAR10 (COSMA only, additional) | ✅ (32×32 — small tier; COSMA's documented *non*-win: linear chain, nothing to reuse) | — | — | Kept as a separate, additional COSMA-only data point for the small-budget-tier control case (compute-bound *and* small-resolution) |
 
-GoogLeNet is the only model where one row can honestly compare all three.
-Every other row is 2-of-3, or 3-of-3 with a depth/dataset mismatch flagged in
-the row itself — every table using this roster repeats that caveat in a
-footnote rather than hiding it in prose above the table.
+GoogLeNet and ResNet-18 are the only models where one row honestly compares
+all three. Every other row is 2-of-3, or flagged with a resolution/tier
+mismatch — every table using this roster repeats that caveat in a footnote
+rather than hiding it in prose above the table.
+
+### 3.1 Sourced vs. built: how ResNet-18 was added
+
+Per your explicit preference, ResNet-18 was *sourced* — torchvision's own
+real `resnet18` class, exported via `torch.onnx.export` → `onnx2tf` →
+trim's exporter into `cosma/_exported/ResNet18/model.json`
+(`spm_common/source_torchvision_model.py`, reusing
+`build_paper_models.py`'s exporter wiring) — not hand-reconstructed in
+Keras the way `build_paper_models.py`'s own AlexNet/GoogLeNet/ResNeXt-50
+are. This is the same recipe already used ad hoc (not as a reusable
+script, until now) for COSMA's ResNeXt-50, R2Plus1D-18, S3D, and FCN
+(`cosma/docs/paper_model_roster.md`). Verified authentic two ways: (1)
+11,689,512 parameters, exactly matching torchvision's published ResNet-18
+param count; (2) 20 CONV2D + 1 DENSE = 21 "real" layers (the paper's own
+CV/PW/FC/PL count in Table 2) — the other 16 layers in the raw export
+(8 ADD, 5 PAD, 1 MAXPOOL, 1 TRANSPOSE, 1 REDUCE_MEAN) are exactly the ops
+the paper's own layer-counting scheme doesn't count. One real bug had to be
+worked around, not patched around silently: onnx2tf's own
+`download_test_image_data()` fetches a calibration image from a GitHub
+release that returns 404 (upstream asset removed) and crashes on the
+response — the same bug COSMA's ResNeXt-50 export already hit and
+documented. Fixed the same way: pre-placing a synthetic calibration
+`.npy` in the working directory so the (unused, non-quantized-path) download
+is skipped. This export lands in `cosma/_exported/`, the cache COSMA and
+OnSRAM already share, so both get it with zero further code changes; SMM's
+`run_smm.py` converts it via the same `topology_builder.build_topology()`
+path it already uses for any model.json, replacing SMM's old hand-built
+`smm/topologies/resnet18_same_padded.csv` stand-in (conv-only, non-standard
+padding, no DENSE metadata) with the real architecture.
 
 ## 4. Parameter axes and values
 
 ### 4.1 Budget (primary axis — every script sweeps this natively in one invocation)
 
-64, 128, 256, 512, 1024 KB — matches SMM's own default sweep exactly.
+**Two tiers, not one — found empirically, not assumed.** COSMA's ILP hard-requires
+every tracked tensor to fit the budget standalone ("infeasible regardless
+of scheduling" if not); OnSRAM degrades more gracefully but still fails a
+placement/fragmentation check at small budgets on large tensors. SMM's
+per-layer tiling has no such floor — it was already fine at any budget.
+Confirmed directly by running COSMA on the roster's own models (not assumed
+from docs):
+
+```
+GoogLeNet   (224×224): largest tracked tensor = 3,211,264 bytes (~3.06 MB) -> infeasible below that
+MobileNetV2 (224×224): largest tracked tensor = 1,605,632 bytes (~1.53 MB) -> infeasible below that
+ResNet-18   (224×224): largest tracked tensor = 3,211,264 bytes (~3.06 MB) -> infeasible below that
+ResNeXt-50  (224×224): ~9.19 MB per COSMA's own documented M_R (cosma/docs/paper_model_roster.md)
+ResNet-20-CIFAR10 (32×32): largest tracked tensor = 147,456 bytes (~144 KB) -> fits the small tier fine
+```
+
+This is *why* COSMA's own validated roster leans on CIFAR-scale variants
+(ResNet-20-**CIFAR10**, SqueezeNet-**CIFAR100**) for some entries — not a
+dataset preference, a feasibility requirement its whole-tensor-residency
+model imposes that SMM's tiling doesn't share.
+
+**Small tier (CIFAR-scale models only):** 64, 128, 256, 512, 1024 KB —
+matches SMM's own default sweep exactly.
 
 | Paper | Flag | Values to pass |
 |---|---|---|
 | COSMA | `--budgets-kb` | `64 128 256 512 1024` |
 | OnSRAM | `--spm-mb` | `0.0625 0.125 0.25 0.5 1.0` |
 | SMM | `--glb_kb` | `64 128 256 512 1024` |
+
+**Large tier (full 224×224-resolution models — GoogLeNet, ResNet-18,
+MobileNetV2, ResNeXt-50, SqueezeNet1.1):** 4, 8, 16, 32 MB. Every point
+clears GoogLeNet/ResNet-18/MobileNetV2's floor; **ResNeXt-50 specifically
+needs the tier's upper end (≥16MB) — its 4MB and 8MB rows are expected to
+come back infeasible for COSMA, and that's a real result to report, not a
+bug to route around.** SMM runs the full tier fine at every point (no
+floor), giving a genuine small-vs-large-tier comparison for SMM alone, in
+addition to the cross-paper rows.
+
+| Paper | Flag | Values to pass |
+|---|---|---|
+| COSMA | `--budgets-kb` | `4096 8192 16384 32768` |
+| OnSRAM | `--spm-mb` | `4 8 16 32` |
+| SMM | `--glb_kb` | `4096 8192 16384 32768` |
 
 ### 4.2 Array size
 
@@ -225,14 +292,20 @@ has an `fp16` row and an `int8` row, for all three papers.
 
 ## 5. Full factorial matrix
 
-5 models × 3 array sizes × 3 bandwidths × 2 precisions × 3 papers = **270
-process invocations**, each sweeping all 5 budgets natively via the script's
-own multi-value flag — so the resulting dataset is **1350 rows**
-(model × budget × array × bandwidth × precision × paper) without 1350
-separate process launches. Precision (§4.5) requires a separate invocation
-per value for all three papers — for OnSRAM/SMM because `--precision` is a
-per-process flag like `--config`, not a multi-value sweep flag; for COSMA
-because each precision is a physically different pre-exported `model.json`.
+Per §4.1, budget is no longer one shared 5-point axis — it's two tiers,
+each applying to a different model subset (small tier: ResNet-20-CIFAR10,
+SqueezeNet-CIFAR100; large tier: GoogLeNet, ResNet-18, MobileNetV2,
+ResNeXt-50, SqueezeNet1.1). Counting both tiers together: 6 model/variant
+rows × 3 array sizes × 3 bandwidths × 2 precisions × 3 papers (where
+applicable per the roster's ✅/❌ cells) = **at most 324 process
+invocations**, each sweeping its tier's budgets natively in one call (4 or
+5 points) — so **at most ~1600 rows**, fewer once COSMA's structurally-
+infeasible cells (ResNeXt-50 at the tier's bottom two points, §4.1) are
+excluded rather than run and discarded. Precision (§4.5) requires a
+separate invocation per value for all three papers — for OnSRAM/SMM because
+`--precision` is a per-process flag like `--config`, not a multi-value sweep
+flag; for COSMA because each precision is a physically different
+pre-exported `model.json`.
 
 **Cost reality, not hidden:** OnSRAM's own 16-run budget-only sweep already
 took ~1h55m (`onsram/docs/onsram_model_roster.md`). COSMA's ILP solve time

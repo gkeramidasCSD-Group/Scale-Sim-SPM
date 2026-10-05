@@ -29,16 +29,15 @@ shortcut conv in a residual block).
 | **GoogLeNet** | 64 | CV, PW, FC | ✅ `_exported/GoogLeNet/model.json` | **Correction (2026-10-04): this roster's "not sourced" claim went stale** — the export exists (82 layers: 57 CONV2D, 1 DENSE, MAXPOOL, CONCAT for the inception branches; dated 2026-09-26, 10 days after this roster's own "checked against `_exported/` on 2026-09-16" line above), presumably added for the same gap OnSRAM's/COSMA's own rosters flagged. Not yet run through `run_smm.py`. MAXPOOL/CONCAT get no topology row (shared, pre-existing gap across all three papers' ports, same treatment as everywhere else non-conv ops appear) — only the DENSE classifier needed this session's new costing. |
 | **EfficientNetB0** | 82 | CV, DW, PW, FC | ⚠️ `_exported/efficient50/model.json` | An EfficientNet variant is exported (confirmed via its ops: SIGMOID+MUL Swish-activation pattern, 1 real DENSE classifier layer) — but the folder name ("efficient50") doesn't confirm it's specifically B0 vs. a different compound-scaling variant. Same "paper doesn't pin the exact variant" caveat COSMA's roster already makes for DenseNet. |
 | MnasNet | 53 | CV, DW, PW, FC | ❌ not sourced | Re-checked 2026-10-04, still genuinely absent from `_exported/` (no MnasNet-named directory of any kind) — would need exporting first |
-| ResNet18 | 21 | CV, PW, FC, PL | ❌ not sourced (as a model.json) | Re-checked 2026-10-04, still genuinely absent — `_exported/` has ResNet-50, ResNet-20-CIFAR10, ResNeXt-50, R(2+1)D, but no ResNet-18. Our own hand-built `smm/topologies/resnet18_same_padded.csv` (conv-only, no model.json, no DENSE metadata available) stands in for this one — see `smm_verification.md`. |
+| ResNet18 | 21 | CV, PW, FC, PL | ✅ `_exported/ResNet18/model.json` | **Sourced 2026-10-05** via `spm_common/source_torchvision_model.py` (torchvision `resnet18`, random weights, PyTorch→ONNX→`onnx2tf`→trim exporter — real architecture, not hand-built: 11,689,512 params matches torchvision's published ResNet-18 param count exactly). 37 layers total (20 CONV2D, 8 ADD, 5 PAD, 1 MAXPOOL, 1 TRANSPOSE, 1 REDUCE_MEAN, 1 DENSE) — the 20 CONV2D + 1 DENSE = **21** matches the paper's own Table 2 count exactly (ADD/PAD/MAXPOOL/REDUCE_MEAN/TRANSPOSE aren't counted by the paper's CV/PW/FC/PL scheme). Input `[1,224,224,3]`, standard ImageNet resolution. Smoke-tested through `run_smm.py` directly (replacing the old hand-built `smm/topologies/resnet18_same_padded.csv` stand-in, which is now superseded — that CSV had no DENSE metadata and used non-standard "same" padding, not the real architecture). This export also lands in `cosma/_exported/`, the same cache COSMA and OnSRAM read, so it's immediately usable by both with no further work — see `spm_common/docs/cross_paper_benchmark_testbed.md` for the cross-paper feasibility caveat (COSMA/OnSRAM need the on-chip budget to exceed ResNet-18's largest tracked tensor, ~3.06MB at this resolution — infeasible below that regardless of scheduling). |
 
 ## 2. Summary
 
-**4 of 6 ready to run right now as real model.json exports** (MobileNet, MobileNetV2, GoogLeNet,
-and EfficientNetB0 modulo the variant caveat), **2 not sourced** (MnasNet, ResNet-18 — ResNet18
-has a separate, hand-built conv-only stand-in instead, not a true model.json). The "GoogLeNet gap
-shared across all three paper rosters" note from the original 2026-09-16 check no longer holds —
-re-verify against `cosma/_exported/` directly (`ls`) rather than trusting this file's own prior
-summary line, since it's already gone stale once.
+**5 of 6 ready to run right now as real model.json exports** (MobileNet, MobileNetV2, GoogLeNet,
+ResNet18, and EfficientNetB0 modulo the variant caveat), **1 not sourced** (MnasNet). The "GoogLeNet
+gap shared across all three paper rosters" note from the original 2026-09-16 check no longer
+holds — re-verify against `cosma/_exported/` directly (`ls`) rather than trusting this file's own
+prior summary line, since it's already gone stale once.
 
 **Every one of this paper's 6 models includes FC (fully-connected) layers** per the paper's own
 Table 2 — but **not every exported model.json represents that head as a real DENSE op**. Checked

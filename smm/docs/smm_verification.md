@@ -163,7 +163,53 @@ equally, not something specific to SMM.
 - FC/DENSE layers are not simulated (same gap `smm/docs/smm_model_roster.md` and both other
   papers' rosters already flag) — `cosma/helpers/topology_builder.build_topology()` (reused by
   `smm/run_smm.py` for model.json inputs) only emits CONV2D/DEPTHWISE_CONV2D/CONV_3D rows.
-- Only ResNet18 (`topologies/conv_nets/Resnet18.csv`) has been validated end-to-end against real
-  per-layer numbers so far; the paper's other 5 models (MobileNet, MobileNetV2, EfficientNetB0,
-  GoogLeNet, MnasNet) have not yet been run through `run_smm.py` — see
-  `smm/docs/smm_model_roster.md` for availability.
+- MnasNet and a true ResNet18 model.json remain unsourced (see `smm/docs/smm_model_roster.md`);
+  ResNet18 runs via the hand-built, conv-only `smm/topologies/resnet18_same_padded.csv` instead.
+
+## 6. Cross-model check against the paper's own stated numbers (2026-10-05)
+
+Full real-simulated runs (baseline x3 + Hom + Het, all 5 of the paper's GLB sizes, DENSE layers
+included via `dense_costing.py` where the export has a real DENSE op) on 5 of the paper's 6
+models: ResNet18 (hand-built topology), MobileNet, MobileNetV2, GoogLeNet
+(`cosma/_exported/GoogLeNet/` — corrected onto the roster this session; see
+`smm_model_roster.md`), and EfficientNetB0-ish (`efficient50`, variant unconfirmed). MnasNet still
+missing. All run on a second machine ("mary") after this port was git-pushed there; numbers
+reproduced exactly against this machine's own earlier ResNet18 run, confirming no machine-specific
+drift.
+
+**% off-chip-access reduction vs. best baseline, at 64kB** (the one GLB size the paper quotes
+exact numbers for in its own text, §5.1):
+
+| Model | Our Het | Our Hom |
+|---|---:|---:|
+| ResNet18 | 85.9% | 82.1% |
+| GoogLeNet | 76.4% | 71.6% |
+| MobileNet | 72.9% | 66.8% |
+| EfficientNetB0-ish | 54.8% | 50.5% |
+| MobileNetV2 | 48.8% | 46.5% |
+
+**Paper's own stated range (§5.1)**: Het 43.2% (MobileNetV2, the paper's own stated *floor*) to
+79.8% (ResNet18, the paper's own stated *ceiling*); Hom 32.2% (MnasNet) to 74.5% (ResNet18).
+
+**Findings**:
+1. **Ranking matches exactly** — ResNet18 is our highest, MobileNetV2 our lowest, precisely the
+   two models the paper itself names as its extremes.
+2. **Adding DENSE costing measurably closed part of the gap**, not just theoretically: MobileNetV2
+   moved 51.3% → 48.8% once its classifier layer was correctly counted (its export has 1 real
+   DENSE op; MobileNet(v1)'s classifier is a 1×1 CONV2D instead, unaffected either way) — in the
+   right direction, toward the paper's 43.2%.
+3. **The remaining gap is a consistent, same-sized, same-direction offset, not scatter**: ResNet18
+   overshoots the paper by +6.1pp (85.9 vs 79.8), MobileNetV2 by +5.6pp (48.8 vs 43.2) — two
+   different models, near-identical overshoot. That consistency points to one systematic cause
+   (most likely the baseline sa_50_50-vs-sa_25_75 ratio-preference flip already diagnosed in §4
+   above — our baseline's own absolute numbers run a bit different from the paper's, which
+   inflates every Het/Hom percentage roughly equally, since Het/Hom's own absolute DRAM totals are
+   independently exact against Table 3), rather than a per-model bug.
+4. The paper's own "Het/Hom go nearly flat once GLB is large enough" behavior (§5.1) holds across
+   every model tested, not just ResNet18 — confirmed e.g. in GoogLeNet (flat ~14.61MB from 256kB
+   up) and MobileNetV2 (flat ~13.21MB from 64kB up already).
+
+**Still open**: MnasNet (unsourced) and a true ResNet18 model.json would complete the paper's full
+6-model roster; the `latency` objective remains unexercised on any model; and the baseline
+ratio-preference mechanism (finding 3 above) is diagnosed but not yet traced to a single root
+cause beyond "filter-traffic saturation on large late-stage layers" (§4's per-layer breakdown).
