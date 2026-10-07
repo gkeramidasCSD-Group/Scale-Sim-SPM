@@ -121,7 +121,8 @@ def run_cosma(model_json_path: str = DEFAULT_MODEL_JSON,
               force_export: bool = False,
               free_schedule: bool = False,
               compact_plot: bool = True,
-              solver: str = 'cbc') -> dict:
+              solver: str = 'cbc',
+              include_parameters: bool = False) -> dict:
     """
     model_json_path may also be a raw .tflite file -- it's auto-exported
     to model.json and cached under export_dir (see spm_common/model_resolver.py,
@@ -176,11 +177,29 @@ def run_cosma(model_json_path: str = DEFAULT_MODEL_JSON,
         DenseNet-121/free_schedule=True, both of which have hit CBC
         solve times of many minutes to unbounded on this project's own
         real models.
+
+    include_parameters: False (default) reproduces every previously
+        validated result byte-identically -- activations only, forwarded
+        straight to graph_builder.load_graph(). True additionally tracks
+        weight/parameter tensors (the paper's M_Rp/M_Hp/M_Pp setting, see
+        that function's own docstring and docs/ITERATION_HISTORY.md's
+        entry on this) in the ILP/allocator layer -- verified correct
+        there (regression-checked against every activation-only result,
+        collision-checked via SpmAllocator replay on real parameter-
+        inclusive solves). NOT yet verified for this function's own
+        SCALE-Sim re-simulation below: whether a weight tensor's first
+        ('C') residency event is charged a real DRAM fetch here, the way
+        results_plan.md's "Activation+parameter tracking" item flags as
+        still open, is unconfirmed -- treat dram_traffic_reduction_pct/
+        speedup with caution under True until that's checked; the ILP's
+        own total_non_compulsory_access_bytes/status are trustworthy
+        regardless, since those come from the (verified) allocator layer,
+        not this SCALE-Sim pass.
     """
     model_json_path = model_resolver.resolve_model_json(
         model_json_path, exporter, export_dir, force_export)
 
-    nodes, tensors = graph_builder.load_graph(model_json_path)
+    nodes, tensors = graph_builder.load_graph(model_json_path, include_parameters=include_parameters)
 
     # Cheap, baseline-independent check first: fail fast on a hopeless
     # budget instead of paying for a full SCALE-Sim run only to hit this
@@ -485,6 +504,14 @@ if __name__ == '__main__':
                               "~600x faster than CBC on Inception-V3-sized problems in this "
                               "project's own profiling. Pass --solver cbc to fall back to "
                               "PuLP's bundled open-source solver, no license needed.")
+    parser.add_argument('--include-parameters', action='store_true',
+                         help="Track weight/parameter tensors too (the paper's M_Rp/M_Hp/M_Pp "
+                              "setting), not just activations. Off by default -- every prior "
+                              "result stays byte-identical. The ILP/allocator layer is verified "
+                              "correct under this flag; this function's own SCALE-Sim "
+                              "re-simulation (dram_traffic_reduction_pct/speedup) is NOT yet "
+                              "verified for weight-fetch accounting -- see run_cosma()'s own "
+                              "docstring.")
     args = parser.parse_args()
 
     run_cosma(
@@ -500,4 +527,5 @@ if __name__ == '__main__':
         free_schedule=args.free_schedule,
         compact_plot=not args.raw_addresses,
         solver=args.solver,
+        include_parameters=args.include_parameters,
     )

@@ -2091,3 +2091,333 @@ a `DRAM_access.csv` file that doesn't exist in this SCALE-Sim version.
     fragmentation), even with a theoretically-sufficient total budget.
     Two independent, real models now confirm the same pattern. Results
     folded into both models' own rows in `paper_model_roster.md`.
+
+38. **Found a real correctness bug in `build_cosma_model()`'s Eq.10
+    pair-pruning — documented here, NOT fixed yet (future work).**
+    Surfaced by a `run_paper_roster.py --solver gurobi` sweep on a second
+    machine ("mary"): DenseNet (FP32) at `M_R`=6328.25KB returned
+    `cosma_native` status `ERROR`, not the earlier session's `Not Solved`
+    timeout — the real `SpmAllocator` replay (`spm_common/spm_allocator.py`,
+    an independent verification step that does NOT trust the ILP's own
+    output) raised `SpmAllocationError: tensor 9 action 'C' at t=3:
+    [0, 3211264) collides with tensor 2 at [0, 602112)`.
+
+    Root cause, confirmed directly against the model's own graph (not just
+    reasoned about): tensor 2's liveness window is `(0, 1)` (producer at
+    t=0, last consumer at t=1) and tensor 9's is `(3, 4)` — these do not
+    overlap, so `_liveness_windows()`-based Eq.10 pair-pruning (the
+    `O(|T|x|A|^2)` → much smaller optimization described in §III-F of the
+    plan doc / this module's own complexity-analysis comments) never
+    generated a non-overlap constraint for this pair at all. But nothing in
+    Eq.1-11 as coded actually forces `P[a,t] == 0` once a tensor's last
+    consumer has passed — Eq.12's objective only penalizes spill/retrieve,
+    never occupancy, so "keep preserving a dead tensor forever" is a free,
+    legal action under the raw constraints. The pruning silently assumed no
+    solution would ever do that; on DenseNet's hard search space (already
+    known-slow, see item 25-ish / `PAPER_READINESS.md`), the solver found
+    a feasible-in-the-pruned-model incumbent that does exactly this,
+    exploiting an overlap the pruning had already assumed away.
+
+    **Does not threaten any other recorded "Optimal" result** — the same
+    `SpmAllocator` replay runs for every combo in every result in this
+    project, and it already passed clean on every other "Optimal"
+    cosma_native row (ResNet-50 ×2, DeepLabV3, FCN, S3D, ResNeXt-50,
+    DenseNet-121-INT8, R2Plus1D-18). DenseNet (FP32) is the one instance
+    hard enough for the solver to wander into this specific degenerate
+    region before/instead of reaching a validated extreme point.
+
+    **Proposed fix (not applied)**: add `P[a,t] == 0` and `R[a,t] == 0`
+    for every `t` past tensor `a`'s last real consumer (`windows[a][1]`),
+    for every `a in A` — this makes the constraint set match what the
+    pruning already assumes, can't cut off any genuinely-better solution
+    (preserving a dead tensor never helps Eq.12's objective), and by
+    removing a whole class of pointless degenerate solutions from the
+    search space, may also help DenseNet's own solve time (plausible but
+    unverified — could be what's been causing the `Not Solved` timeouts
+    in the first place, not just a separate issue).
+
+39. **Baseline-fidelity investigation** (user's own observation: "in the
+    paper no model's baseline has 0 non-compulsory accesses at the
+    lowest/tightest SPM budget, but here almost every model's baseline
+    does" — i.e. is our TFLite-style baseline unrealistically *good*
+    compared to the paper's, making the comparison unfair in COSMA's
+    favor rather than a faithful reproduction). Investigated two concrete
+    hypotheses this session, both empirically **disproven** — recorded
+    here so neither gets re-tried assuming it's still open:
+
+    - **Hypothesis A: missing byte alignment.** `cosma2`'s own commit
+      `38a495f` (2026-10-04, previously untested — see its docstring in
+      `helpers/tflite_arena_allocator.py`) added real 64-byte tensor
+      alignment (TFLite's actual `kDefaultTensorAlignment`/
+      `kDefaultArenaAlignment`, confirmed against `util.h`/
+      `arena_planner.h`) to `_best_fit_gap()`, on the theory that our old,
+      byte-exact (unaligned) allocator was "too good" at packing exactly
+      the models (ResNet-50, DeepLabV3, S3D) that tie at 0 bytes for
+      every scheme at `M_R`==`MPMF`. **Tested directly this session,
+      with the fix already live**: ran `replacement_engine
+      .simulate_replacement()` + `tflite_arena_allocator
+      .place_tensors_linear()` (skipping the slow full-SCALE-Sim path) on
+      ResNet-50 FP32, DeepLabV3, S3D, and FCN at their own `M_R` budgets —
+      **all four still place with 0 spills and 0 placement failures**,
+      byte-identical to before the fix. The alignment fix is still a real
+      TFLite-fidelity improvement in principle, but it does not explain
+      this discrepancy for any of the four models it was written to
+      explain. Falsifying an untested hypothesis before trusting it (per
+      the project's own standing practice — see `feedback-verify-
+      empirically` in memory) saved from reporting a fix that doesn't fix
+      anything.
+    - **Hypothesis B: TFLite op-fusion collapsing distinct tensors.**
+      OnSRAM's own roster doc (`onsram/docs/onsram_model_roster.md`)
+      already established that TFLite fuses BatchNorm/Bias/ReLU into the
+      producing conv, and that the `_unfused` exports (rebuilding those as
+      separate nodes, via `spm_common/unfuse_model.py`) are the paper-
+      comparable variant for OnSRAM — raising the question of whether
+      COSMA's own fused exports similarly collapse `M_R` into `MPMF`
+      artificially. **Tested directly**: compared `compute_structural_
+      minimum_bytes()`/`compute_mpmf_bytes()` (instant, no-ILP-solve
+      bounds) on both `_exported_resnet50-tflite-float` (79 tensors,
+      fused) and its `_unfused` sibling (182 tensors) — **both have
+      `M_R` == `MPMF` == 9633792 bytes exactly**, zero gap, regardless of
+      fusion. Also disproven.
+
+    **Separately, a real architectural gap was found while investigating
+    this** (not yet confirmed as the actual explanation, but worth fixing
+    regardless): `replacement_engine.simulate_replacement()`'s eviction
+    trigger (`deficit = occupied_bytes + batch_bytes - memory_budget_bytes`,
+    `helpers/replacement_engine.py` ~line 114) is a pure running byte-sum
+    against the budget — completely blind to the allocator's actual
+    placement/fragmentation. Replacement decisions are made under an
+    idealized "perfect packing is always achievable" assumption, and
+    `tflite_arena_allocator.place_tensors_linear()` is only invoked
+    *afterward*, with no feedback loop: if real placement fails (due to
+    fragmentation the byte-sum check couldn't see), the whole combination
+    just errors out (`TfliteArenaAllocationError`) rather than the
+    replacement policy spilling one more tensor and retrying. This means
+    our baseline can currently only land on "ties at 0" (byte-sum said
+    fine, placement happened to succeed) or "fails outright" (byte-sum
+    said fine, placement didn't) — never on the paper's actual pattern of
+    "nonzero but successfully-placed" overhead, which is what a real,
+    iterative place-then-evict-on-failure loop would be needed to
+    reproduce. Not yet confirmed to be the actual cause of the `M_R`
+    degenerate-tie discrepancy (both tested hypotheses above left `0
+    spills decided` before placement was even attempted, so this gap's
+    blindness was never actually exercised in those four tests) — but a
+    real, separate fidelity gap regardless, and the most likely remaining
+    candidate once Fig.3's actual bar values are confirmed (open, pending
+    a screenshot — see chat).
+
+    **Fig.3 checked visually this session (user supplied a screenshot —
+    the PDF's extracted text only had axis gridline labels, not real bar
+    values, so this was the first real look).** The actual pattern is
+    sharper and broader than "zero at the tightest budget only":
+    - **ResNet-50**: Default+Belady/MPMF+Belady (~9.2MB) and Default+
+      Greedy/MPMF+Greedy (~5.7MB) stay essentially flat across `M_R`,
+      `M_H`, **and `M_P`** — baselines never reach 0, even at the
+      schedule-optimal peak-footprint budget. Our port: everyone
+      (COSMA and both baselines) ties at exactly 0 at the single
+      `M_R`==`M_P` budget we compute.
+    - **S3D**: all four baseline schemes sit at a *constant* ~25-26MB
+      across all six budget tiers (`M_R` through `M_Pp`), completely
+      unmoved by budget tier or schedule/policy choice. Our port: a
+      clean 0 for everyone at `M_R`==`M_P`.
+    - **R2Plus1D**: paper's Belady (~290-300MB) and Greedy (~165-230MB)
+      clearly *differ* from each other at `M_R`/`M_H`. Our port:
+      Belady and Greedy (and even `cosma_native`) land on the exact
+      same byte count (205,520,896) at both tiers — suggesting zero
+      real freedom between policies at this budget, where the paper's
+      version clearly has some.
+    - DenseNet and ResNeXt-50 are the two models whose *qualitative*
+      shape already matches reasonably well (real nonzero baseline
+      bytes at `M_R`/`M_H` that shrink toward `M_P`, or outright
+      fragmentation failure) — consistent with earlier findings on
+      these two specifically.
+
+    Since a baseline can only show nonzero bytes **at `M_P` itself**
+    through packing fragmentation (everything fits in principle at that
+    budget by definition — nonzero spill/retrieve there can only come
+    from the simple linear allocator failing to find a perfect
+    zero-waste layout for the live set), and the already-tested
+    alignment fix doesn't produce that effect on any of these models
+    (item above), **there is a further TFLite-allocator fidelity gap
+    beyond byte alignment** that hasn't been identified yet — something
+    is making our port's `place_tensors_linear()` find perfect packings
+    in cases where real TFLite's arena allocator apparently cannot.
+    `_best_fit_gap()`'s gap-scan itself was already ported carefully
+    from `simple_memory_arena.cc` per `38a495f`'s own docstring, so the
+    remaining gap is more likely in *what order/lifetime information*
+    gets fed into it, not the scan algorithm itself — unconfirmed, next
+    candidate to check.
+
+    **Status: open, next session.** Two hypotheses eliminated (byte
+    alignment, op fusion), one architectural gap identified but not yet
+    linked to the discrepancy (replacement-decisions-are-placement-blind,
+    see above), and the discrepancy now confirmed as real and broader
+    than first thought (affects `M_P` itself on ResNet-50/S3D, not just
+    `M_R`) via a direct visual check of Fig.3.
+
+40. **Third hypothesis tested and also eliminated: a genuinely different,
+    real TF-native TFLite export toolchain still produces `M_R`==`MPMF`
+    for ResNet-50 — the degenerate tie is confirmed robust across export
+    pipelines, not a pipeline artifact.** Planned and built with a Plan
+    agent after item 39 left this as the one remaining testable
+    hypothesis. First, a correction the planning step surfaced: the
+    existing ResNet-50 baseline (`_exported/_exported_resnet50-tflite-
+    float/`) turned out to **not** be `onnx2tf`-sourced at all — its own
+    `metadata.json` shows `tool_versions: {"qairt": ...}`, i.e. it was
+    downloaded pre-converted from **Qualcomm AI Hub**, a third toolchain
+    neither this project's ONNX pipeline nor TensorFlow ever touched. So
+    the original "our ONNX pipeline vs. the paper's probable TF-native
+    pipeline" framing didn't even apply to ResNet-50 — the real open
+    question was narrower: does *any* second independent real toolchain
+    agree with QAIRT's structure, or was QAIRT itself the outlier?
+
+    Built `spm_common/build_paper_models_tf_native.py` (new, additive —
+    builds real `tf.keras.applications.ResNet50`, converts with the real
+    `tf.lite.TFLiteConverter.from_keras_model()`, plain FP32, no
+    quantization — reuses `model_resolver.resolve_model_json()`
+    unmodified) and `cosma/tools/compare_model_structures.py` (new,
+    read-only — 4-way structural comparison via `graph_builder.load_graph`
+    + `cosma_Ilp.compute_structural_minimum_bytes`/`compute_mpmf_bytes`,
+    all reused unmodified). TensorFlow 2.19.0/Keras already installed
+    (transitive `onnx2tf` dependency), ImageNet weights already cached
+    locally — no new dependencies, no network needed.
+
+    **Result: `M_R`==`MPMF`==9,633,792 bytes exactly, byte-identical to
+    the QAIRT export.** The 4-way structural comparison shows why: the
+    53-CONV2D/16-ADD bottleneck-block backbone is **structurally
+    identical** across QAIRT (fused + unfused), native-TF-Keras INT8
+    (existing), and native-TF-Keras FP32 (new) — only cosmetic
+    differences (QAIRT has an extra input-normalization SUB/MUL pair and
+    3 more PAD ops; native-TF has a trailing SOFTMAX). All four converge
+    on the same **max concurrency width of 3** (never more than 3 tensors
+    live at once, at any timestep, in any of the four exports) — the
+    direct structural cause of the zero gap (see item 39's proof that
+    `M_R`==`MPMF` forces zero spill arithmetically). Three independent
+    real toolchains (Qualcomm AI Hub, and two genuinely different
+    TensorFlow-native conversions) now agree: this is a real,
+    toolchain-independent architectural property of ResNet-50's
+    bottleneck-block design, not an artifact of any one export pipeline.
+
+    **This closes the "which toolchain" line of investigation for
+    ResNet-50.** The remaining gap with the paper's Fig.3 (baselines
+    staying nonzero on ResNet-50/S3D even at `M_P`) is not explained by
+    byte alignment, op fusion, a TFLite port mismatch, or export-pipeline
+    tensor granularity — all four now directly tested and eliminated. The
+    two live candidates left, both unverifiable without the paper's own
+    code (confirmed not public, item 39): (a) an undocumented quirk in
+    how the paper's own replacement-aware TFLite extension handles
+    tensors with multiple separate spill/retrieve episodes (stock TFLite
+    has no analog to compare against — confirmed again this session); or
+    (b) the paper's own ResNet-50 may differ architecturally in some way
+    not captured by "which toolchain converted it" (e.g. a non-standard
+    variant) — less likely now that three standard implementations
+    converge this tightly, but not ruled out.
+
+    **Recommendation going forward**: stop chasing this specific gap for
+    ResNet-50/S3D/DeepLabV3/FCN without the paper's code — treat their
+    zero-gap result as a confirmed, honest structural finding to report
+    as-is, and prioritize benchmarking/paper-writing effort on DenseNet,
+    ResNeXt-50, and R2Plus1D-18, which already show the paper's
+    qualitative pattern (real nonzero baseline overhead, or outright
+    baseline placement failure, with COSMA beating both).
+
+41. **Activation+parameter tracking implemented** (`spm_common/graph_builder
+    .load_graph(..., include_parameters=True)`, new, additive, default
+    `False` keeps every prior result byte-identical) — the paper's second
+    standard setting (Fig.3's `M_Rp`/`M_Hp`/`M_Pp` columns), previously
+    unimplemented (item 2 of `results_plan.md`'s open list). A weight
+    tensor is modeled as resident from the earliest layer that needs it
+    (`producer_layer = min(consumer layers)`) through its last use,
+    grouped generically rather than assumed 1:1 (confirmed one real
+    shared-weight tensor on the ResNet-50 export: a PAD constant reused
+    across 4 layers).
+
+    Motivation: item 40 left ResNet-50/S3D/DeepLabV3/FCN as a confirmed,
+    toolchain-independent structural dead end in the activation-only
+    setting. The parameter-inclusive setting is a different, real,
+    paper-sanctioned lever, not yet tried.
+
+    **Result: 2 of 4 previously-degenerate models gain a genuine,
+    non-degenerate `M_Rp`-to-`MPMF_p` gap.** ResNet-50 (FP32): 802,816
+    bytes (784.00KB). ResNet-50 (INT8): 100,352 bytes (98.00KB). S3D and
+    DeepLabV3 remain exactly degenerate even with parameters (confirmed,
+    not just untested). FCN's bounds were *initially* measured at a huge
+    25,890KB gap — this turned out to be a bug in the measurement itself
+    (see below), not a real result; after the fix FCN is also exactly
+    degenerate, same as S3D/DeepLabV3.
+
+    Two real bugs found and fixed while getting a *trustworthy* number out
+    of this, both regression-checked against every prior activation-only
+    result (byte-identical, confirmed after each fix):
+
+    - **`compute_structural_minimum_bytes()` (`M_R`/`M_Rp`) under-counted**
+      — it only summed `node.activation_inputs` + `node.outputs`, never
+      `node.weight_inputs`, so a node's own weight footprint was silently
+      missing from its worst-case floor. This is what produced the bogus
+      25,890KB FCN "gap" above: the bug made `M_Rp` artificially *low*;
+      fixing it (added the missing `weight_inputs` term) raised `M_Rp` to
+      exactly meet `MPMF_p`, closing the gap for real. `compute_mpmf_bytes()`
+      needed no fix — it already sums generically over whatever's in
+      `tensors`, weights included.
+    - **`build_cosma_model()`'s Eq.5 needed a genuinely different rule for
+      weight inputs, not just "also loop over them."** A weight tensor's
+      own creation coincides with its first use (by construction), so
+      reusing Eq.5's activation-input rule (`Cv(a,t) <= P[b,t]+R[b,t]`,
+      requiring `b` to have been created strictly earlier) would make a
+      weight's own `Cv(b,t)=1` at that same `t` contradict the requirement
+      that it be `P`/`R` (not `C`) — Eq.1's mutual exclusivity makes this
+      unsatisfiable. Fixed with a separate, looser rule for weight inputs
+      specifically (`Cv(a,t) <= Cv(b,t)+P[b,t]+R[b,t]` — "being fetched
+      right now" also counts as available, unlike a computed activation,
+      which has genuine DAG-precedence ordering a weight constant doesn't).
+      Also added a `produced_tensor_ids` filter so Eq.5's "my own creation
+      requires my inputs" rule is only ever generated for tensors that are
+      actually computed (real node outputs) — without it, a weight tensor
+      being iterated as `a` would wrongly inherit its *consuming* node's
+      unrelated activation-input requirements as if they were its own
+      dependencies. `replacement_engine.simulate_replacement()` got the
+      matching treatment: a weight's first appearance admits as `'C'`, any
+      later appearance (the rare shared-weight case) as `'R'`, both folded
+      into the existing generic admit-batch/protected-set logic.
+
+    **A third, more interesting bug surfaced only after all of the above
+    was already correct**: ResNet-50 (FP32) at `MPMF_p` reported
+    `cosma_native` status `Optimal`, 0 bytes — but `SpmAllocator`'s real
+    replay found tensor 27 (`C` at t=11, a 256-byte weight) colliding with
+    tensor 10 (a 32-byte weight, the shared PAD constant above, resident
+    `P` at t=11) at the same address. Traced to the raw solved values, not
+    assumed: `d_10_27_11 = 0.9999970379...`, not exactly 1 — within
+    Gurobi's *default* `IntFeasTol` (~1e-5), so accepted as "integer
+    feasible," but Eq.10's big-M term `budget*(1-d)` turns that ~3e-6
+    slack into `10,803,200 * 0.00000296 ≈ 32` bytes — which exactly
+    cancels the 32-byte non-overlap gap the constraint was supposed to
+    enforce. **Not a formulation bug** — Eq.10's `M = memory_budget` is
+    already the tightest single constant valid for the worst-case pair
+    (confirmed by rederiving the bound: it can't be tightened further as
+    a single constant without per-pair information). It's a latent
+    numerical fragility of big-M formulations in general, invisible until
+    a tensor small enough (here, a 32-byte weight) makes `budget *
+    default_tolerance` comparable to the tensor's own size — never
+    triggered by any activation tensor seen so far, all far larger than
+    this threshold. Fixed by tightening Gurobi's `IntFeasTol`/
+    `FeasibilityTol` to `1e-9` (its own minimum) in `cosma_Ilp.solve()`,
+    applied to every Gurobi solve, not just parameter-inclusive ones —
+    regression-checked byte-identical on DenseNet-121 (INT8) afterward,
+    and confirmed to actually close the collision (clean `Optimal`/0 bytes/
+    replay-OK) on the ResNet-50 case that exposed it.
+
+    **Final, trustworthy results** (all three bugs fixed, every number
+    replay-verified via `SpmAllocator`, no collisions):
+
+    | Model | Tier | Default+Belady | Default+ILP-Greedy | COSMA (native) |
+    |---|---|---|---|---|
+    | ResNet-50 (FP32) | `M_Rp` (9766.00KB) | 4,014,080 B | 4,014,080 B | 4,014,080 B, `Optimal` |
+    | ResNet-50 (FP32) | `MPMF_p` (10550.00KB) | 0 B | 0 B | 0 B, `Optimal` |
+    | ResNet-50 (INT8) | `M_Rp` (2355.00KB) | **FAILS** (fragmentation) | **FAILS** (fragmentation) | 602,112 B, `Optimal` |
+    | ResNet-50 (INT8) | `MPMF_p` (2453.00KB) | **FAILS** (fragmentation) | **FAILS** (fragmentation) | 0 B, `Optimal` |
+
+    ResNet-50 (INT8) is now a clean, citable, non-degenerate "COSMA wins"
+    result (same strength as ResNeXt-50/DenseNet-121-INT8 in item 37/40).
+    ResNet-50 (FP32) is a softer, still-genuine result: all three schemes
+    agree at both tiers (no baseline failure to beat), but it's no longer
+    the trivial always-0 tie it was in the activation-only setting.

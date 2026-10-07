@@ -99,11 +99,28 @@ def simulate_replacement(nodes: Dict[int, object], tensors: Dict[int, object],
         # each is newly admitted or already resident -- neither can be
         # evicted to make room for the other (they're needed by the same
         # op, right now).
+        #
+        # Weight/parameter inputs (only present when graph_builder.load_graph
+        # was called with include_parameters=True -- absent from `tensors`
+        # otherwise, so this is a no-op for every prior result) need the
+        # same treatment with one difference: a weight's FIRST appearance
+        # (at its own producer_layer, the earliest layer that needs it) is
+        # its one-time compulsory fetch -- a Create, not a Retrieve, since
+        # nothing created it before. Any LATER appearance (the rare case of
+        # a weight tensor genuinely shared across >1 layer) is a Retrieve,
+        # exactly like a repeated activation_input.
+        weight_admit = [
+            (a, 'C' if tensors[a].producer_layer == lid else 'R')
+            for a in node.weight_inputs
+            if a in tensors and a not in resident_now
+        ]
         protected = ({a for a in node.activation_inputs if a in tensors}
+                     | {a for a in node.weight_inputs if a in tensors}
                      | {a for a in node.outputs if a in tensors})
         admit_batch = (
             [(a, 'R') for a in node.activation_inputs
              if a in tensors and a not in resident_now]
+            + weight_admit
             + [(a, 'C') for a in node.outputs if a in tensors]
         )
         batch_bytes = sum(tensors[a].size_bytes for a, _ in admit_batch)

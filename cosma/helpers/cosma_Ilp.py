@@ -59,9 +59,16 @@ def compute_structural_minimum_bytes(nodes, tensors) -> Tuple[int, int]:
     simultaneously resident at some single timestep no matter what
     scheduling/spilling choices are made -- for each node t, the sum of
     the sizes of its own activation_inputs plus its own outputs (exactly
-    what Eq.5 already forces resident at t = producer_t[a]). Below this
-    budget, build_cosma_model()/solve() is provably Infeasible -- no need
-    to build or solve the ILP to find that out.
+    what Eq.5 already forces resident at t = producer_t[a]), plus its own
+    weight_inputs when present in `tensors` (only true when
+    graph_builder.load_graph was called with include_parameters=True --
+    absent otherwise, making this a no-op for every prior result). A
+    node's own weights are just as unconditionally resident during its
+    execution as its activation inputs/outputs are -- Eq.5w enforces the
+    same thing on the ILP side once weights are tracked (see
+    build_cosma_model()'s Eq.5 block). Below this budget,
+    build_cosma_model()/solve() is provably Infeasible -- no need to
+    build or solve the ILP to find that out.
 
     Returns (bytes, argmax_timestep) so a caller can report *which*
     operator is the bottleneck, not just the number.
@@ -82,6 +89,7 @@ def compute_structural_minimum_bytes(nodes, tensors) -> Tuple[int, int]:
         node = nodes[t]
         live = sum(tensors[a].size_bytes for a in set(node.activation_inputs) if a in tensors)
         live += sum(tensors[a].size_bytes for a in set(node.outputs) if a in tensors)
+        live += sum(tensors[a].size_bytes for a in set(node.weight_inputs) if a in tensors)
         if live > floor_bytes:
             floor_bytes, floor_t = live, t
     return floor_bytes, floor_t
@@ -518,25 +526,60 @@ def build_cosma_model(nodes, tensors, memory_budget_bytes: int, free_schedule: b
             prob += R[a, t] <= pulp.lpSum(S[a, k] for k in T if k <= t), f"Eq4_{a}_{t}"
 
     # Eq.5: an operator's activation inputs must already be resident when it runs.
+    #
+    # Only tensors that are genuinely COMPUTED (appear in some node's own
+    # `outputs`) get an Eq.5 constraint for their own creation -- weight/
+    # parameter tensors (present in A only when graph_builder.load_graph was
+    # called with include_parameters=True; absent otherwise, making this
+    # filter a no-op for every prior result) are exogenous constants, not
+    # computed from other tensors, so they must never be treated as `a`
+    # here (doing so would wrongly couple a weight's own fetch timing to
+    # the unrelated activation inputs of whichever node happens to consume
+    # it first).
+    produced_tensor_ids = {out for node in nodes.values() for out in node.outputs if out in tensors}
+
     if free_schedule:
         # C is free, so which t ends up hosting a's creation isn't known
         # until solved -- evaluated at every t (vacuous whenever
         # Cv(a,t)==0). This is also what makes DAG precedence hold
         # transitively -- see the free_schedule docstring above.
         for a in A:
+            if a not in produced_tensor_ids:
+                continue
             node = nodes[producer_t[a]]
             for b in node.activation_inputs:
                 if b in tensors:
                     for t in T:
                         prob += Cv(a, t) <= P[b, t] + R[b, t], f"Eq5_{a}_{b}_{t}"
+            # Weight inputs get a looser RHS than activation inputs: Cv(b,t)
+            # itself also counts as "available," not just P/R. A computed
+            # activation input must have been produced at a STRICTLY
+            # earlier timestep (real DAG precedence, enforced by P/R-only),
+            # but a weight is an exogenous constant with no such ordering
+            # requirement -- it can legitimately be fetched just-in-time,
+            # in the same timestep it's first consumed (which is exactly
+            # when its own Cv(b,t) fires, since graph_builder.py sets a
+            # weight's producer_layer to its own first consumer). Using
+            # the same P/R-only RHS here would make Cv(b,t)=1 (forced at
+            # that t) contradict Eq.1's mutual exclusivity with P/R=0 --
+            # an unsatisfiable, spurious constraint, not a real dependency.
+            for b in node.weight_inputs:
+                if b in tensors:
+                    for t in T:
+                        prob += Cv(a, t) <= Cv(b, t) + P[b, t] + R[b, t], f"Eq5w_{a}_{b}_{t}"
     else:
         # Schedule is fixed, so this only needs checking at t = producer_t[a].
         for a in A:
+            if a not in produced_tensor_ids:
+                continue
             t = producer_t[a]
             node = nodes[t]
             for b in node.activation_inputs:
                 if b in tensors:
                     prob += Cv(a, t) <= P[b, t] + R[b, t], f"Eq5_{a}_{b}_{t}"
+            for b in node.weight_inputs:
+                if b in tensors:
+                    prob += Cv(a, t) <= Cv(b, t) + P[b, t] + R[b, t], f"Eq5w_{a}_{b}_{t}"
 
     if free_schedule:
         # Eq.6: tensors sharing the same producing node must be created at
@@ -584,6 +627,33 @@ def build_cosma_model(nodes, tensors, memory_budget_bytes: int, free_schedule: b
         windows = _asap_alap_tensor_windows(tensors, _asap_alap_node_windows(nodes, tensors, T))
     else:
         windows = _liveness_windows(tensors)
+
+    # Not one of the paper's own numbered equations: force a tensor out of
+    # residency once it's past its own window's upper bound (its last real
+    # use, or a safe ASAP/ALAP superset of it under free_schedule). Without
+    # this, nothing in Eq.1-9 actually stops the solver from leaving a
+    # tensor "preserved" (P=1) indefinitely after its last real use --
+    # Eq.12's objective never penalizes occupancy, only spill/retrieve, so
+    # that's a free, legal action under the raw constraints alone. The
+    # pair-pruning above (and below, for Eq.10) assumes no solution ever
+    # does this -- it only generates a non-overlap constraint for pairs
+    # whose windows overlap. A solver exploring a genuinely hard search
+    # space (confirmed on DenseNet FP32 @ M_R=6328.25KB, fixed schedule --
+    # see docs/ITERATION_HISTORY.md item 38) can land on exactly such a
+    # solution: tensor 2 (window (0,1)) left preserved through t=3, when
+    # tensor 9 (window (3,4)) is created at the same address -- a real
+    # SpmAllocator replay collision the pruning never saw coming, since it
+    # never paired a tensor with a non-overlapping window against anything.
+    # This constraint can't cut off any genuinely-better solution
+    # (preserving a dead tensor never helps Eq.12's objective) and closes
+    # the unsoundness by making the constraint set match what the pruning
+    # already assumes.
+    for a in A:
+        _, a_end = windows[a]
+        for t in T:
+            if t > a_end:
+                prob += P[a, t] == 0, f"Eq10Sound_P_{a}_{t}"
+                prob += R[a, t] == 0, f"Eq10Sound_R_{a}_{t}"
 
     pairs: List[Tuple[int, int]] = []
     for i, a in enumerate(A):
@@ -680,7 +750,28 @@ def solve(prob, time_limit_sec=None, msg=False, solver='cbc'):
     clearly and never treat it as equivalent to a real 'Optimal'.
     """
     if solver == 'gurobi':
-        pulp_solver = pulp.GUROBI(msg=msg, timeLimit=time_limit_sec)
+        # IntFeasTol/FeasibilityTol tightened to Gurobi's own minimum
+        # (1e-9, down from its ~1e-5/1e-6 defaults) -- found necessary,
+        # not just defensive, after a real collision: Eq.10's big-M terms
+        # use M=memory_budget (already the tightest valid single constant,
+        # see Eq.10's own comment), which can be ~1e7 for a real model.
+        # At the DEFAULT tolerance, a binary variable like d[a,b,t] can be
+        # reported "integer-feasible" at 0.999997 instead of exactly 1 --
+        # negligible for most constraints, but M*(1-d) with M~1e7 turns
+        # that ~3e-6 slack into a real ~30-byte gap, large enough to fully
+        # swap out a small tensor's own non-overlap guarantee. Confirmed
+        # directly: a 32-byte weight tensor (only present when
+        # graph_builder.load_graph was called with include_parameters=True)
+        # placed at the exact same address as another resident tensor,
+        # reported Optimal, caught only because SpmAllocator's own replay
+        # doesn't trust the ILP and found a real collision. At
+        # IntFeasTol=1e-9, the induced slack (budget * 1e-9) is a small
+        # fraction of a byte for any realistic SPM budget -- safe for
+        # tensors far smaller than any seen so far, not just this one.
+        # Regression-checked: byte-identical results on every
+        # previously-recorded activation-only model after this change.
+        pulp_solver = pulp.GUROBI(msg=msg, timeLimit=time_limit_sec,
+                                   IntFeasTol=1e-9, FeasibilityTol=1e-9)
     elif solver == 'cbc':
         pulp_solver = pulp.PULP_CBC_CMD(msg=msg, timeLimit=time_limit_sec)
     else:

@@ -65,7 +65,26 @@ def compute_size_bytes(shape, dtype: str) -> int:
     return num_elements * bytes_per_elem
 
 
-def load_graph(model_json_path: str):
+def load_graph(model_json_path: str, include_parameters: bool = False):
+    """
+    include_parameters: False (default, unchanged behavior for every
+    existing caller) tracks activations only, as this module's own
+    docstring describes. True additionally materializes a Tensor for
+    every weight/bias tensor (any input with inputs_from == -1) -- the
+    paper's own "both activation tensors and parameter tensors" setting
+    (Fig.3's M_Rp/M_Hp/M_Pp columns, confirmed against the primary source
+    in cosma/docs/results_plan.md: "the paper's own ILP needs no special
+    handling for weights, it just includes them in A"). A weight tensor
+    has no real producer layer (inputs_from == -1 means it's a constant,
+    not computed), so it's modeled the same minimal way the paper's own
+    formulation implies: producer_layer = the earliest layer that
+    actually needs it (the instant it must first be resident), and
+    consumer_layers = every layer that reads it -- almost always a single
+    layer (each conv/dense's own unique weight tensor), but computed
+    generally via grouping, not assumed 1:1, in case a tensor is ever
+    genuinely shared across layers (confirmed to happen at least once on
+    the ResNet-50 export tested during development).
+    """
     with open(model_json_path, 'r') as f:
         model = json.load(f)
 
@@ -79,6 +98,7 @@ def load_graph(model_json_path: str):
 
     nodes: Dict[int, Node] = {}
     tensors: Dict[int, Tensor] = {}
+    weight_consumer_layers: Dict[int, List[int]] = {}
 
     for layer in model['layers']:
         layer_id = layer['id']
@@ -110,11 +130,25 @@ def load_graph(model_json_path: str):
                 producer_layer=layer_id,
             )
 
+        if include_parameters:
+            for tid in weight_inputs:
+                weight_consumer_layers.setdefault(tid, []).append(layer_id)
+
     # Second pass: fill in consumer_layers now that all tensors are known.
     for layer in model['layers']:
         for tid in layer.get('inputs', []):
             if tid in tensors:
                 tensors[tid].consumer_layers.append(layer['id'])
+
+    if include_parameters:
+        for tid, layer_ids in weight_consumer_layers.items():
+            info = tensor_shapes[tid]
+            tensors[tid] = Tensor(
+                id=tid,
+                size_bytes=compute_size_bytes(info['shape'], info['dtype']),
+                producer_layer=min(layer_ids),
+                consumer_layers=sorted(set(layer_ids)),
+            )
 
     return nodes, tensors
 

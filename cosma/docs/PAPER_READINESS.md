@@ -1,5 +1,67 @@
 # What's left for the COSMA results (short version)
 
+**Activation-only baseline-fidelity investigation: closed out,
+inconclusive in that setting, recommend not chasing further there
+(2026-10-07, see `ITERATION_HISTORY.md` #39-40).** In the activation-only
+setting, our TFLite-style baseline allocator ties at exactly 0 bytes for
+every scheme on ResNet-50/S3D/DeepLabV3/FCN, while the paper's Fig.3
+shows these same models' baselines staying substantially nonzero even at
+`M_P`. Four distinct hypotheses tested and **all eliminated**: missing
+64-byte TFLite alignment, BatchNorm/Bias/ReLU fusion, a mis-ported TFLite
+placement algorithm (re-verified against current real TFLite source), and
+export-toolchain tensor granularity (tested a genuinely TF-native export,
+byte-identical result to the existing QAIRT-sourced one). Confirmed the
+zero gap is mathematically forced by these models' own low concurrency
+(2-7 tensors live at once) in the activation-only setting specifically —
+proven by contrast against a toy fixture with a real `M_R != MPMF` gap,
+which immediately shows a real spill under the identical code. No public
+code artifact exists for this paper to resolve the remaining gap against
+ground truth in that setting.
+
+**But the parameter-inclusive setting (`M_Rp`/`M_Hp`/`M_Pp` — the paper's
+own second standard setting, Fig.3) is a different lever, and it worked
+(2026-10-07, `ITERATION_HISTORY.md` #41).** `spm_common/graph_builder
+.load_graph(..., include_parameters=True)` (new) tracks weight tensors
+too. Result: ResNet-50 (both precisions) gain a real, non-degenerate
+`M_Rp`-to-`MPMF_p` gap (784.00KB / 98.00KB) — S3D and DeepLabV3 stay
+exactly degenerate even with parameters, confirmed not just untested.
+ResNet-50 (INT8) is now a clean, citable "COSMA wins" result: baselines
+fail outright at both tiers, COSMA solves `Optimal` both times (602,112
+bytes at `M_Rp`, 0 at `MPMF_p`). Getting a *trustworthy* number out of
+this surfaced and fixed three real bugs, all regression-checked against
+every prior activation-only result (byte-identical after each fix):
+`compute_structural_minimum_bytes()` under-counted (missing
+`weight_inputs` in a node's own floor — this is what produced an initial,
+bogus 25,890KB "gap" for FCN, since corrected to exactly 0, same as
+S3D/DeepLabV3); Eq.5 needed a separate, looser rule for weight inputs
+(`Cv(a,t) <= Cv(b,t)+P[b,t]+R[b,t]`, not the activation-input rule, to
+avoid an unsatisfiable self-contradiction); and a genuine Gurobi numerical
+fragility in Eq.10's big-M formulation (a 32-byte weight tensor was small
+enough that the *default* `IntFeasTol` (~1e-5) induced a same-sized false
+"gap," reported `Optimal` despite a real `SpmAllocator` collision — fixed
+by tightening `IntFeasTol`/`FeasibilityTol` to `1e-9` in
+`cosma_Ilp.solve()`, applied to every Gurobi solve). Next candidate:
+extend the same `include_parameters=True` path to DenseNet/ResNeXt-50/
+R2Plus1D-18/FCN's full baseline comparison (currently only re-verified
+the bounds for those four, not the full replacement+allocator+ILP
+pipeline).
+
+Also worth fixing, found during the same investigation but not yet
+linked to a specific discrepancy: `replacement_engine
+.simulate_replacement()`'s eviction trigger is a pure byte-sum check,
+blind to the allocator's real placement/fragmentation, with no feedback
+loop back to replacement when placement fails.
+
+**Fixed, 2026-10-07**: the Eq.10 pair-pruning correctness bug documented
+below as item #38 (a tensor could stay "preserved" past its last real
+use, invisible to the overlap constraints that assumed it never would) —
+applied (`Eq10Sound_P`/`Eq10Sound_R` constraints in `build_cosma_model()`)
+and regression-checked. DenseNet (FP32) no longer collides, though it
+still doesn't reach a proven-optimal solution in a practical time limit
+(a separate, known solve-hardness issue, see below) — the fix closed the
+unsoundness, not the scale problem.
+
+
 Goal, in your order: (1) make sure the ILP logic is actually correct, (2)
 get real paper-comparable results, (3) justify why our numbers match the
 paper's logic/claims.

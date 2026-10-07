@@ -90,8 +90,31 @@ Usage
     python3 run_paper_roster.py --solver gurobi     # recommended whenever a license is available (~0.4s vs. CBC's much slower on anything this size)
     python3 run_paper_roster.py --schedules both --true-mpmf   # the real, full paper comparison -- expect this to be slow (see above)
     python3 run_paper_roster.py --time-limit 1200 --true-mpmf-time-limit 1200
+    python3 run_paper_roster.py --include-parameters --solver gurobi   # the paper's M_Rp/M_Hp/M_Pp setting (see --include-parameters's own help)
 
 See docs/paper_model_roster.md for what's available/blocked/not-sourced and why.
+
+--include-parameters (added 2026-10-07, docs/ITERATION_HISTORY.md item 41)
+-----------------------------------------------------------------------
+Tracks weight/parameter tensors too, not just activations -- the paper's
+second standard setting (Fig.3's M_Rp/M_Hp/M_Pp columns). Motivated by a
+prior finding that ResNet-50/S3D/DeepLabV3/FCN are structurally degenerate
+(M_R==MPMF, no spill ever possible) in the activation-only setting, robust
+across 3 independent real export toolchains -- this flag tests the
+paper's other reported setting instead of re-chasing that same dead end.
+Verified so far: ResNet-50 (both precisions) gain a real, non-degenerate
+gap this way; S3D/DeepLabV3 remain degenerate even with parameters
+(confirmed, not just untested); DenseNet/ResNeXt-50/R2Plus1D-18/FCN have
+only had their BOUNDS re-checked under this flag, not the full baseline
+comparison this script runs -- that's the natural next sweep to run with
+this flag on a more powerful machine. The replacement/allocator/ILP layer
+is verified correct (regression-checked, collision-checked via
+SpmAllocator replay); the real SCALE-Sim dram_traffic_reduction_pct/
+speedup columns are not yet verified for weight-fetch DRAM accounting --
+read total_non_compulsory_access_bytes/status as the trustworthy columns
+under this flag, and treat the other two with caution until that's
+separately checked (see run_cosma.run_cosma()'s own docstring for the
+exact open question).
 """
 import argparse
 import csv
@@ -202,12 +225,13 @@ def _roster_by_name(names) -> list:
 
 
 def _budgets_for(model_path: str, exporter: str, export_dir: str, force_export: bool,
-                  true_mpmf: bool, true_mpmf_time_limit, solver: str) -> tuple:
+                  true_mpmf: bool, true_mpmf_time_limit, solver: str,
+                  include_parameters: bool = False) -> tuple:
     """Returns (resolved_model_json_path, [budget_kb, ...])."""
     resolved = model_resolver.resolve_model_json(model_path, exporter=exporter,
                                                    export_dir=export_dir,
                                                    force_export=force_export)
-    nodes, tensors = graph_builder.load_graph(resolved)
+    nodes, tensors = graph_builder.load_graph(resolved, include_parameters=include_parameters)
     bounds = visualize_spm.print_budget_bounds(nodes, tensors)
     m_r = bounds['structural_minimum_bytes']
     mpmf_proxy = bounds['mpmf_bytes']
@@ -230,14 +254,16 @@ def run_one_model(model: dict, args) -> dict:
     try:
         resolved, budgets_kb = _budgets_for(
             model['model_path'], args.exporter, args.export_dir, args.force_export,
-            args.true_mpmf, args.true_mpmf_time_limit, args.solver)
+            args.true_mpmf, args.true_mpmf_time_limit, args.solver,
+            include_parameters=args.include_parameters)
     except Exception as e:
         print(f"[{name}] FAILED during export/bounds: {e}")
         return {'name': name, 'ok': False, 'error': f'export/bounds: {e}'}
 
     print(f"[{name}] budgets (KB): {budgets_kb}")
-    out_csv = os.path.join(args.results_dir, f"{name}_paper_roster.csv")
-    log_path = os.path.join(args.logs_dir, f"{name}_paper_roster.log")
+    name_tag = f"{name}_with_params" if args.include_parameters else name
+    out_csv = os.path.join(args.results_dir, f"{name_tag}_paper_roster.csv")
+    log_path = os.path.join(args.logs_dir, f"{name_tag}_paper_roster.log")
     os.makedirs(args.results_dir, exist_ok=True)
     os.makedirs(args.logs_dir, exist_ok=True)
 
@@ -253,6 +279,8 @@ def run_one_model(model: dict, args) -> dict:
         cmd.append('--no-plots')
     if args.free_schedule:
         cmd.append('--free-schedule')
+    if args.include_parameters:
+        cmd.append('--include-parameters')
 
     t0 = time.time()
     with open(log_path, 'w') as logf:
@@ -310,10 +338,35 @@ def main():
                               "Schedule sub-problem this project ran by default until now. Off "
                               "by default. Never validated at roster scale before this flag "
                               "existed -- expect real solve-time cost on larger models.")
+    parser.add_argument('--include-parameters', action='store_true',
+                         help="Track weight/parameter tensors too, not just activations -- the "
+                              "paper's M_Rp/M_Hp/M_Pp setting (Fig.3's second column group). Off "
+                              "by default -- every prior result stays byte-identical. Threaded "
+                              "through to graph_builder.load_graph() for this script's own bounds "
+                              "step and forwarded as run_paper_baselines.py's own "
+                              "--include-parameters for the comparison subprocess. The "
+                              "replacement/allocator/ILP layer (status, "
+                              "total_non_compulsory_access_bytes) is verified correct under this "
+                              "flag as of 2026-10-07 (see docs/ITERATION_HISTORY.md's entry on "
+                              "this -- 3 real bugs found and fixed getting a trustworthy number "
+                              "out of it: a missing weight term in the M_R/M_Rp floor, a wrong "
+                              "Eq.5 rule for weight inputs, and a Gurobi integer-tolerance "
+                              "fragility exposed by small weight tensors in Eq.10's big-M term). "
+                              "The real SCALE-Sim-driven dram_traffic_reduction_pct/speedup "
+                              "columns are NOT yet verified for weight-fetch DRAM accounting -- "
+                              "treat those two columns with caution until checked; status/bytes "
+                              "are trustworthy regardless.")
     parser.add_argument('--results-dir', default=DEFAULT_RESULTS_DIR)
     parser.add_argument('--logs-dir', default=DEFAULT_LOGS_DIR)
-    parser.add_argument('--out-csv', default=os.path.join(DEFAULT_RESULTS_DIR, 'paper_roster_summary.csv'))
+    parser.add_argument('--out-csv', default=None,
+                         help='Default: cosma/results/paper_roster_summary.csv, or '
+                              'paper_roster_summary_with_params.csv under --include-parameters '
+                              '-- kept distinct so a parameter-inclusive sweep never silently '
+                              'overwrites an activation-only one (or vice versa).')
     args = parser.parse_args()
+    if args.out_csv is None:
+        suffix = '_with_params' if args.include_parameters else ''
+        args.out_csv = os.path.join(DEFAULT_RESULTS_DIR, f'paper_roster_summary{suffix}.csv')
 
     if args.list:
         print_roster()

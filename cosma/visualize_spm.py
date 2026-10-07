@@ -560,11 +560,16 @@ def main():
                               "--true-mpmf/--free-schedule on a large model. Pass --solver cbc "
                               "to fall back to PuLP's bundled open-source solver, no license "
                               "needed.")
+    parser.add_argument('--include-parameters', action='store_true',
+                         help="Track weight/parameter tensors too, not just activations -- the "
+                              "paper's M_Rp/M_Hp/M_Pp setting. Off by default -- every prior "
+                              "result stays byte-identical. See run_paper_roster.py's own "
+                              "--include-parameters help for what's verified under this flag.")
     args = parser.parse_args()
 
     model_json_path = model_resolver.resolve_model_json(
         args.model_json, args.exporter, args.export_dir, args.force_export)
-    nodes, tensors = graph_builder.load_graph(model_json_path)
+    nodes, tensors = graph_builder.load_graph(model_json_path, include_parameters=args.include_parameters)
 
     if args.bounds_only or args.true_mpmf:
         bounds = print_budget_bounds(nodes, tensors)

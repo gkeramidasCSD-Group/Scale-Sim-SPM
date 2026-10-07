@@ -341,7 +341,8 @@ def run_all_paper_baselines(model_json_path: str, config_path: str = DEFAULT_CON
                              verbose: bool = True,
                              save_plots: bool = True,
                              schedules: tuple = ('default', 'mpmf'),
-                             free_schedule: bool = False) -> dict:
+                             free_schedule: bool = False,
+                             include_parameters: bool = False) -> dict:
     """
     Loads the graph once, computes layer_stats via baseline.run_baseline()
     once (schedule-independent -- reused across all combinations below,
@@ -399,13 +400,26 @@ def run_all_paper_baselines(model_json_path: str, config_path: str = DEFAULT_CON
     paper's own documented O(|T|x|A|^2) worst case") -- never validated at
     ResNet-50/DenseNet-121 scale before enabling this here.
 
+    include_parameters: False (default) reproduces every previously
+    validated result byte-identically. True additionally tracks weight/
+    parameter tensors in `tensors` (the paper's M_Rp/M_Hp/M_Pp setting --
+    see graph_builder.load_graph()'s own docstring and
+    docs/ITERATION_HISTORY.md's entry on this), forwarded to run_cosma.
+    run_cosma() for the cosma_native row too. The replacement/allocator/
+    ILP layer is verified correct under this flag (total_non_compulsory_
+    access_bytes/status are trustworthy); the real SCALE-Sim numbers
+    (dram_traffic_reduction_pct/speedup, from baseline.run_baseline()/
+    run_cosma_aware() below) have NOT been verified for weight-fetch
+    accounting yet -- see run_cosma.run_cosma()'s own docstring for the
+    exact open question.
+
     Returns {'default+belady', 'default+ilp_greedy'[, 'mpmf+belady',
     'mpmf+ilp_greedy'][, 'cosma_native']: summary dict (or
     {'status': 'ERROR', 'error': str} on failure)}.
     """
     model_json_path = model_resolver.resolve_model_json(
         model_json_path, exporter, export_dir, force_export)
-    nodes, tensors = graph_builder.load_graph(model_json_path)
+    nodes, tensors = graph_builder.load_graph(model_json_path, include_parameters=include_parameters)
     cosma_Ilp.assert_tensors_fit_budget(tensors, memory_budget_bytes)
 
     bandwidth_bytes_per_cycle = _default_bandwidth_words_per_cycle(config_path)
@@ -499,7 +513,7 @@ def run_all_paper_baselines(model_json_path: str, config_path: str = DEFAULT_CON
                 ilp_time_limit_sec=ilp_time_limit_sec,
                 verbose=verbose, save_plot=save_plots,
                 plot_out_path=cosma_native_plot_path, solver=solver,
-                free_schedule=free_schedule)
+                free_schedule=free_schedule, include_parameters=include_parameters)
             if verbose:
                 r = results['cosma_native']
                 print(f"  non-compulsory bytes: {r['total_non_compulsory_access_bytes']}, "
@@ -602,6 +616,13 @@ if __name__ == '__main__':
                               'cosma/logs/ -- always written, this only lets you pick where.')
     parser.add_argument('--no-logs', action='store_true',
                          help='Skip saving the run log; print only.')
+    parser.add_argument('--include-parameters', action='store_true',
+                         help="Track weight/parameter tensors too (the paper's M_Rp/M_Hp/M_Pp "
+                              "setting), not just activations. Off by default -- every prior "
+                              "result stays byte-identical. See run_all_paper_baselines()'s own "
+                              "docstring for exactly what's verified under this flag and what "
+                              "isn't yet (the SCALE-Sim-driven dram_traffic_reduction_pct/"
+                              "speedup columns specifically).")
     args = parser.parse_args()
 
     array_tag = _array_dims_tag(args.config)
@@ -630,7 +651,8 @@ if __name__ == '__main__':
                     save_plots=not args.no_plots,
                     schedules=(('default', 'mpmf') if args.schedules == 'both'
                                else (args.schedules,)),
-                    free_schedule=args.free_schedule)
+                    free_schedule=args.free_schedule,
+                    include_parameters=args.include_parameters)
                 print_comparison_table(results, budget_kb)
                 for combo, r in results.items():
                     all_rows.append({
